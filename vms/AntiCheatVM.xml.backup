@@ -1,0 +1,58 @@
+<domain type="kvm">
+  <name>AntiCheatVM</name>
+  <uuid>101d8897-73b2-4d7c-838c-9d6c5773f99c</uuid>
+  <metadata/>
+  <memory unit="KiB">8388608</memory>
+  <currentMemory unit="KiB">8388608</currentMemory>
+  <cpu mode="host-passthrough" check="none">
+    <feature policy="disable" name="hypervisor"/>
+    <cache mode="passthrough"/>
+  </cpu>
+  <vcpu placement="static">8</vcpu>
+  <os>
+    <type arch="x86_64" machine="q35">hvm</type>
+    <loader readonly="yes" type="pflash">/usr/share/edk2/ovmf/OVMF_CODE.fd</loader>
+    <nvram>/var/lib/libvirt/qemu/nvram/AntiCheatVM_VARS.fd</nvram>
+    <boot dev="cdrom"/>
+    <boot dev="hd"/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+    <hyperv mode="custom"/>
+  </features>
+  <smbios mode="host"/>
+  <devices>
+    <emulator>/usr/bin/qemu-system-x86_64</emulator>
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2" discard="unmap"/>
+      <source file="/home/ydzat/workspace/AntiCheatVM/vms/AntiCheatVM.qcow2"/>
+      <target dev="vda" bus="virtio"/>
+    </disk>
+    <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="/var/lib/libvirt/images/windows.iso"/>
+      <target dev="sda" bus="sata"/>
+      <readonly/>
+    </disk>
+    <interface type="network">
+      <source network="default"/>
+      <model type="virtio"/>
+    </interface>
+    <input type="tablet" bus="usb"/>
+    <input type="keyboard" bus="usb"/>
+    <graphics type="spice">
+      <listen type="none"/>
+    </graphics>
+    <hostdev mode="subsystem" type="pci" managed="yes">
+      <source>
+        <vendor id="0x10de"/>
+        <product id="0x2820"/>
+      </source>
+    </hostdev>
+    <shmem name="looking-glass">
+      <model type="ivshmem-plain"/>
+      <size unit="M">64</size>
+    </shmem>
+  </devices>
+</domain>
