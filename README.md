@@ -26,6 +26,8 @@ It automates the setup of QEMU/KVM virtualization, GPU passthrough (VFIO), CPU/S
 
 ```plaintext
 AntiCheatVM/
+├── README.md
+├── LICENSE
 ├── install.sh              # Install dependencies and basic system setup
 ├── setup_vfio.sh           # Configure VFIO and IOMMU settings
 ├── create_vm.py            # Generate optimized Windows VM configuration
@@ -91,4 +93,10 @@ Open-source. License GPLv3.
 ## 👨‍💻 Contributions
 
 Contributions, suggestions, and bug reports are welcome! Please file issues or pull requests once the project reaches a stable alpha stage.
+
+---
+
+## 📖 References
+
+- Initial implementation inspiration: [Reddit user Lamchocs' successful VFIO setup for "Wuthering Waves"](https://www.reddit.com/r/VFIO/comments/1d68hw3/wuthering_waves_works_on_windows_11/)
 
