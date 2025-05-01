@@ -1,210 +1,179 @@
-# Command Line Interface Guide
+# AntiCheatVM 命令行使用指南
 
-This guide will help you manage GPU switching and virtual machine operations from a text console when you don't have access to a graphical interface.
+本文档提供了使用AntiCheatVM在Fedora上进行GPU直通虚拟化的完整命令行指南。
 
-## Basic Navigation in CLI Mode
+## 简介
 
-When in text mode (no graphical interface):
-- You'll see a login prompt - enter your username and password
-- Navigate using keyboard only, use Tab for completion
-- Press Ctrl+Alt+F1 through F6 to switch between different virtual consoles
-- Use `ls`, `cd`, and standard Linux commands to navigate the filesystem
+AntiCheatVM设计用于创建一个隔离的Windows虚拟机环境，通过直通NVIDIA GPU来运行需要高性能图形处理的游戏，同时避免反作弊软件的检测。
 
-## GPU Management
+### 系统要求
 
-The `gpu-manager.sh` script provides comprehensive GPU management functionality, combining:
-- GPU driver switching for VM passthrough (host ↔ VM)
-- PRIME rendering configuration (Intel ↔ NVIDIA)
+- Fedora Linux (本指南基于Fedora 41)
+- 支持IOMMU的CPU
+- 双显卡配置(一个集成显卡，如Intel HD Graphics，和一个独立NVIDIA显卡)
+- 足够的内存供主机和虚拟机使用
+- 已启用UEFI中的虚拟化选项(VT-d/AMD-V及IOMMU)
 
-### Common GPU Operations
+## 1. 初始设置
 
-1. **Check current GPU status**:
-   ```
-   sudo ./gpu-manager.sh status
-   ```
+如果您是首次设置系统，请按照以下步骤进行操作：
 
-2. **Switch GPU to VM mode** (bind to vfio-pci for passthrough):
-   ```
-   sudo ./gpu-manager.sh vm
-   ```
-   This will stop the graphical server if running.
+```bash
+# 安装必要的虚拟化软件包
+sudo dnf groupinstall --with-optional virtualization
 
-3. **Return GPU to host mode** (bind to NVIDIA driver):
-   ```
-   sudo ./gpu-manager.sh host
-   ```
+# 确保系统已更新到最新
+sudo dnf update
 
-4. **Return to graphical interface** after switching GPU back to host:
-   ```
-   sudo systemctl isolate graphical.target
-   ```
+# 授予当前用户访问libvirt的权限
+sudo usermod -a -G libvirt $(whoami)
+sudo usermod -a -G qemu $(whoami)
 
-5. **Switch to command-line mode** from graphical interface:
-   ```
-   sudo systemctl isolate multi-user.target
-   ```
+# 启用并启动libvirt服务
+sudo systemctl enable libvirtd
+sudo systemctl start libvirtd
 
-6. **Set application rendering** (when not doing passthrough):
-   ```
-   # Use NVIDIA for rendering
-   sudo ./gpu-manager.sh nvidia
-   
-   # Use Intel for rendering
-   sudo ./gpu-manager.sh intel
-   ```
+# 安装显卡切换脚本
+./install.sh
 
-## Virtual Machine Management
+# 让别名立即生效
+source ~/.bashrc
+```
 
-### Starting a VM with passthrough
+## 2. GPU直通准备
 
-1. Switch to text console (if not already there):
-   ```
-   sudo systemctl isolate multi-user.target
-   ```
+### 2.1 查看系统GPU信息
 
-2. Navigate to AntiCheatVM directory:
-   ```
-   cd ~/workspace/AntiCheatVM
-   ```
+```bash
+# 使用别名查看GPU状态
+hows-my-gpu
 
-3. Switch GPU to VM mode:
-   ```
-   sudo ./gpu-manager.sh vm
-   ```
+# 或使用脚本查看详细状态
+sudo ./gpu-manager.sh status
+```
 
-4. Start the virtual machine:
-   ```
-   ./start_vm.sh
-   ```
+### 2.2 切换GPU到VM模式
 
-5. After using the VM, stop it:
-   ```
-   ./stop_vm.sh
-   ```
+在图形界面下：
 
-6. Return GPU to host mode:
-   ```
-   sudo ./gpu-manager.sh host
-   ```
+```bash
+# 使用别名切换GPU
+gpu-to-vm
+```
 
-7. Restart graphical environment:
-   ```
-   sudo systemctl isolate graphical.target
-   ```
+切换完成后，系统将切换到命令行模式。**注意：在切换过程中显示会暂时黑屏，这是正常的。**
 
-## Troubleshooting
+## 3. 启动虚拟机
 
-### Screen is blank after GPU switching
+在命令行模式下，执行以下命令启动虚拟机：
 
-1. Switch to another virtual console using Ctrl+Alt+F2
+```bash
+# 使用别名启动虚拟机
+start-vm
 
-2. Login and check GPU status:
-   ```
-   cd ~/workspace/AntiCheatVM
-   sudo ./gpu-manager.sh status
-   ```
+# 或使用选项启动
+./start_vm.sh --evdev  # 启用键鼠直通
+```
 
-3. If the GPU is in VM mode and you need graphical interface:
-   ```
-   sudo ./gpu-manager.sh host
-   sudo systemctl isolate graphical.target
-   ```
+### 3.1 使用Looking Glass
 
-### GPU driver switching fails
+虚拟机启动后，Looking Glass客户端将自动启动。如果没有自动启动，可以手动启动：
 
-1. Check for running processes using the GPU:
-   ```
-   sudo lsof /dev/nvidia*
-   ```
+```bash
+# 使用别名启动Looking Glass
+vm-display
+```
 
-2. Verify that no X server is running:
-   ```
-   ps aux | grep X
-   ```
+#### Looking Glass快捷键
 
-3. Try forcing all graphical services to stop:
-   ```
-   sudo systemctl isolate multi-user.target
-   sudo systemctl stop gdm sddm lightdm
-   ```
+- **右Ctrl键**：在主机和虚拟机之间切换鼠标/键盘控制
+- **左Ctrl + 左Alt + X**：关闭Looking Glass客户端
 
-4. Then try switching the GPU again:
-   ```
-   sudo ./gpu-manager.sh vm  # or host
-   ```
+## 4. 停止虚拟机
 
-### VM fails to start with GPU passthrough
+当您完成虚拟机使用后，可以通过以下命令停止虚拟机：
 
-1. Check GPU passthrough status:
-   ```
-   lspci -nnk | grep -A 3 NVIDIA
-   ```
+```bash
+# 使用别名停止虚拟机
+stop-vm
 
-2. Ensure the GPU is bound to vfio-pci driver:
-   ```
-   sudo ./gpu-manager.sh status
-   ```
+# 或使用脚本
+./stop_vm.sh
+```
 
-3. Check libvirt logs:
-   ```
-   sudo tail -n 100 /var/log/libvirt/qemu/AntiCheatVM.log
-   ```
+## 5. 切换GPU回主机模式
 
-## Quick Reference
+```bash
+# 使用别名将GPU切换回主机模式
+gpu-to-host
 
-| Task | Command |
-|------|---------|
-| Check GPU status | `sudo ./gpu-manager.sh status` |
-| Switch to VM mode | `sudo ./gpu-manager.sh vm` |
-| Switch to host mode | `sudo ./gpu-manager.sh host` |
-| Start VM | `./start_vm.sh` |
-| Stop VM | `./stop_vm.sh` |
-| Start graphical interface | `sudo systemctl isolate graphical.target` |
-| Switch to text console | `sudo systemctl isolate multi-user.target` |
+# 返回图形界面
+gui  # 这是一个自动创建的别名，等同于 sudo systemctl isolate graphical.target
+```
 
-## Special Notes for NVIDIA Optimus Laptops (Your Configuration)
+## 6. 常见问题解决
 
-Your laptop uses NVIDIA Optimus technology, where:
-- Intel integrated GPU manages the displays
-- NVIDIA GPU handles rendering but output goes through Intel
-- Both internal and external displays appear to be connected through the Intel GPU
+### 图形界面无法恢复
 
-This configuration has significant benefits for GPU passthrough:
+如果在返回图形界面时遇到问题：
 
-### Optimized Workflow for Your System
+```bash
+# 确保GPU已切换回主机模式
+gpu-to-host
 
-1. **Display Continuity**:
-   - Since both displays are likely routed through the Intel GPU, they should remain functional even when the NVIDIA GPU is passed to the VM
-   - This means you may be able to keep your graphical environment running during GPU passthrough
+# 然后强制返回图形界面
+sudo systemctl isolate graphical.target
+```
 
-2. **Modified VM Launch Process**:
-   ```bash
-   # You may not need to switch to text mode first
-   # Try this workflow:
-   
-   # Step 1: Check current GPU status
-   sudo ./gpu-manager.sh status
-   
-   # Step 2: Switch GPU to VM mode
-   sudo ./gpu-manager.sh vm
-   # If this fails with graphical environment running, then try:
-   # sudo systemctl isolate multi-user.target
-   # sudo ./gpu-manager.sh vm
-   
-   # Step 3: Start the VM
-   ./start_vm.sh
-   
-   # Step 4: Use Looking Glass to view the VM
-   # The VM won't have direct physical display output
-   ```
+### Looking Glass共享内存问题
 
-3. **Using Looking Glass**:
-   - Since your displays stay with the host, Looking Glass becomes essential
-   - Install and configure Looking Glass client on your host
-   - Ensure Looking Glass server is installed in your Windows VM
+如果Looking Glass无法连接到共享内存：
 
-4. **Alternative Display Options**:
-   - If you have an HDMI port directly wired to your NVIDIA GPU (uncommon in Optimus setups), you might get direct output there
-   - Most likely, all your physical display ports are connected to the Intel GPU
+```bash
+# 重新设置共享内存文件权限
+sudo touch /dev/shm/looking-glass
+sudo chown $(whoami):qemu /dev/shm/looking-glass
+sudo chmod 0660 /dev/shm/looking-glass
 
-This setup is actually ideal for GPU passthrough, as it allows you to maintain a functional host environment while passing the NVIDIA GPU to your VM.
+# 对于Fedora (SELinux)
+sudo semanage fcontext -a -t svirt_tmpfs_t /dev/shm/looking-glass
+sudo restorecon -v /dev/shm/looking-glass
+```
+
+### 键盘/鼠标直通问题
+
+如果键盘鼠标直通不工作：
+
+```bash
+# 查看可用输入设备
+ls -l /dev/input/by-id/
+ls -l /dev/input/by-path/
+
+# 使用evdev选项重启VM
+./start_vm.sh --evdev
+```
+
+## 7. 有用的命令
+
+下面是一些在使用过程中可能需要的有用命令：
+
+```bash
+# 查看虚拟机状态
+virsh list --all
+
+# 查看VM详情
+virsh dominfo AntiCheatVM
+
+# 检查GPU绑定状态
+lspci -nnk | grep -A 3 NVIDIA
+
+# 在不修改GPU模式的情况下切换至命令行界面
+sudo systemctl isolate multi-user.target
+
+# 在不修改GPU模式的情况下返回图形界面
+sudo systemctl isolate graphical.target
+```
+
+## 致谢
+
+感谢您使用AntiCheatVM。如有任何问题或建议，请提交issues或PR到项目仓库。

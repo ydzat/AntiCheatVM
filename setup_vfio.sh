@@ -1,282 +1,551 @@
 #!/bin/bash
-###
- # @Author: @ydzat
- # @Date: 2025-04-29 20:01:15
- # @LastEditors: @ydzat
- # @LastEditTime: 2025-04-29 20:01:15
- # @Description: 配置 VFIO/IOMMU 环境，编译并绑定 GPU 设备
-### 
+# AntiCheatVM VFIO设置脚本
+# 配置IOMMU和VFIO所需的所有组件
 
-set -e
-echo "[AntiCheatVM] 正在配置 VFIO/IOMMU 环境..."
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 无颜色
 
-# 检查是否为root用户运行
+# 检查是否以root身份运行
 if [ "$(id -u)" -ne 0 ]; then
-   echo "[错误] 此脚本需要root权限执行，请使用sudo运行"
-   exit 1
+    echo -e "${RED}[错误] 此脚本需要以root权限运行${NC}"
+    echo "请使用sudo运行此脚本"
+    exit 1
 fi
 
-# 检查CPU是否支持虚拟化和IOMMU
-check_cpu_support() {
-    echo "[+] 检查CPU虚拟化与IOMMU支持..."
+# 脚本目录
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="$SCRIPT_DIR/config"
+
+# 确保配置目录存在
+mkdir -p "$CONFIG_DIR"
+
+echo "=================================================="
+echo " AntiCheatVM VFIO 设置工具"
+echo "=================================================="
+
+# 检测CPU类型并确定IOMMU参数
+detect_cpu_type() {
+    echo -e "${BLUE}[+] 检测CPU类型...${NC}"
     
-    # 检查CPU虚拟化支持
-    if ! grep -q -E 'vmx|svm' /proc/cpuinfo; then
-        echo "[错误] CPU不支持硬件虚拟化 (AMD-V 或 Intel VT-x)！"
-        exit 1
-    fi
-    
-    # 检查IOMMU支持 (Intel VT-d 或 AMD-Vi)
-    if grep -q GenuineIntel /proc/cpuinfo; then
-        # Intel处理器 - 放宽检测条件
-        if ! dmesg | grep -i "DMAR\|iommu" | grep -q .; then
-            echo "[错误] Intel VT-d 未在BIOS中启用或CPU不支持"
-            echo "请在BIOS中启用VT-d/IOMMU功能后重试"
-            exit 1
-        else
-            echo "[√] Intel VT-d IOMMU支持已确认"
-        fi
+    if grep -q "AuthenticAMD" /proc/cpuinfo; then
+        echo -e "${GREEN}[✓] 检测到AMD CPU${NC}"
+        echo "amd_iommu=on"
     else
-        # AMD处理器 - 同样放宽检测条件
-        if ! dmesg | grep -i "AMD-Vi\|iommu" | grep -q .; then
-            echo "[错误] AMD-Vi 未在BIOS中启用或CPU不支持"
-            echo "请在BIOS中启用AMD-Vi/IOMMU功能后重试"
-            exit 1
-        else
-            echo "[√] AMD-Vi IOMMU支持已确认"
-        fi
+        echo -e "${GREEN}[✓] 检测到Intel CPU${NC}"
+        echo "intel_iommu=on"
     fi
 }
 
-# 修改GRUB参数启用IOMMU
-configure_grub() {
-    echo "[+] 修改GRUB启动参数以启用IOMMU..."
+# 检查IOMMU是否已启用
+check_iommu() {
+    echo -e "${BLUE}[+] 检查IOMMU状态...${NC}"
     
-    GRUB_CONFIG="/etc/default/grub"
-    GRUB_CMDLINE=$(grep "GRUB_CMDLINE_LINUX=" $GRUB_CONFIG)
-    
-    # 根据CPU类型确定IOMMU参数
-    if grep -q GenuineIntel /proc/cpuinfo; then
-        IOMMU_PARAM="intel_iommu=on iommu=pt rd.driver.pre=vfio-pci"
+    if dmesg | grep -i -e DMAR -e IOMMU | grep -i enabled > /dev/null; then
+        echo -e "${GREEN}[✓] IOMMU 已启用${NC}"
+        return 0
     else
-        IOMMU_PARAM="amd_iommu=on iommu=pt rd.driver.pre=vfio-pci"
+        echo -e "${YELLOW}[!] IOMMU 未启用${NC}"
+        return 1
+    fi
+}
+
+# 列出所有PCI设备
+list_pci_devices() {
+    echo -e "${BLUE}[+] 扫描PCI设备...${NC}"
+    
+    # 创建PCI设备文本文件
+    lspci -nnv > "$CONFIG_DIR/pci_devices.txt"
+    
+    echo -e "${GREEN}[✓] PCI设备列表已保存至 $CONFIG_DIR/pci_devices.txt${NC}"
+}
+
+# 获取所有GPU和音频设备
+get_gpu_devices() {
+    echo -e "${BLUE}[+] 查找显卡及相关设备...${NC}"
+    
+    # 查找所有NVIDIA, AMD, Intel显卡
+    echo -e "\n${YELLOW}=== 显卡选择指南 ===${NC}"
+    echo -e "您需要选择要直通到虚拟机的显卡。理想情况下，您应该选择："
+    echo -e "1. 独立显卡（NVIDIA/AMD）用于直通给虚拟机"
+    echo -e "2. 保留集成显卡（Intel/AMD）给宿主Linux系统使用"
+    echo -e "${YELLOW}提示: 如果您只有一块显卡，请确保您有其他方式访问系统（如SSH）${NC}\n"
+    
+    echo -e "${GREEN}可用的显卡设备:${NC}"
+    echo -e "${BLUE}-------------------${NC}"
+    
+    # 使用lspci查找显卡
+    gpu_list=$(lspci -nn | grep -E 'VGA|3D|Display|NVIDIA|AMD/ATI|Radeon|GeForce')
+    
+    # 显示GPU列表，添加更多描述信息
+    gpu_count=0
+    while IFS= read -r line; do
+        gpu_count=$((gpu_count + 1))
+        
+        # 提取显卡类型信息，帮助用户辨识
+        card_type=""
+        if echo "$line" | grep -q "NVIDIA"; then
+            if echo "$line" | grep -q "GeForce"; then
+                card_type="NVIDIA 独立显卡"
+            else
+                card_type="NVIDIA 显卡"
+            fi
+        elif echo "$line" | grep -q -E "AMD|ATI|Radeon"; then
+            if echo "$line" | grep -q -i "integrated"; then
+                card_type="AMD 集成显卡"
+            else
+                card_type="AMD 独立显卡"
+            fi
+        elif echo "$line" | grep -q "Intel"; then
+            card_type="Intel 集成显卡"
+        else
+            card_type="其他显卡"
+        fi
+        
+        echo -e "[$gpu_count] ${YELLOW}$card_type${NC}: $line"
+    done <<< "$gpu_list"
+    
+    # 如果没有发现任何GPU设备
+    if [ "$gpu_count" -eq 0 ]; then
+        echo -e "${RED}[错误] 未找到任何显卡设备${NC}"
+        exit 1
     fi
     
-    # 检查是否已经有IOMMU参数
-    if echo $GRUB_CMDLINE | grep -q "iommu=pt"; then
-        echo "[i] GRUB已包含IOMMU参数，无需修改"
-        return
+    # 让用户选择要直通的GPU
+    echo ""
+    if [ "$gpu_count" -eq 1 ]; then
+        echo -e "${YELLOW}[警告] 只检测到一个显卡设备。如果您将此显卡直通到虚拟机，宿主机将无法显示图形界面。${NC}"
+        echo -e "${YELLOW}[警告] 确保您有其他方式（如SSH）访问系统，否则不建议继续。${NC}"
+    elif [ "$gpu_count" -gt 1 ]; then
+        echo -e "${GREEN}[提示] 检测到多个显卡设备。通常建议：${NC}"
+        echo -e "   - 将独立显卡（NVIDIA/AMD）用于虚拟机"
+        echo -e "   - 保留集成显卡（Intel/AMD）给宿主机使用"
     fi
+    
+    read -p "请输入要用于直通的显卡编号 [1-$gpu_count]: " selected_gpu
+    
+    if [[ ! "$selected_gpu" =~ ^[0-9]+$ ]] || [ "$selected_gpu" -lt 1 ] || [ "$selected_gpu" -gt "$gpu_count" ]; then
+        echo -e "${RED}[错误] 无效的选择：$selected_gpu${NC}"
+        echo -e "${RED}[错误] 请输入1到$gpu_count之间的数字${NC}"
+        exit 1
+    fi
+    
+    # 获取选择的GPU的PCI信息
+    selected_gpu_line=$(sed -n "${selected_gpu}p" <<< "$gpu_list")
+    gpu_pci_id=$(echo "$selected_gpu_line" | grep -o -E '[0-9a-f]{4}:[0-9a-f]{4}' | head -1)
+    gpu_pci_addr=$(echo "$selected_gpu_line" | awk '{print $1}')
+    
+    # 提取厂商和设备名称以便更友好的显示
+    vendor_id=${gpu_pci_id%%:*}
+    device_id=${gpu_pci_id##*:}
+    
+    vendor_name=""
+    case "$vendor_id" in
+        10de) vendor_name="NVIDIA" ;;
+        1002) vendor_name="AMD" ;;
+        8086) vendor_name="Intel" ;;
+        *) vendor_name="未知厂商" ;;
+    esac
+    
+    echo -e "${GREEN}[✓] 已选择GPU: ${YELLOW}$vendor_name${NC} 设备 (PCI地址: $gpu_pci_addr)${NC}"
+    echo -e "${GREEN}[✓] PCI设备ID: $gpu_pci_id${NC}"
+    
+    # 查找相关的音频设备
+    echo -e "${BLUE}[+] 查找相关的音频设备...${NC}"
+    
+    gpu_domain_bus=$(echo "$gpu_pci_addr" | cut -d: -f1)
+    audio_device=$(lspci -nn | grep "$gpu_domain_bus" | grep -i "Audio device")
+    
+    if [ -n "$audio_device" ]; then
+        audio_pci_id=$(echo "$audio_device" | grep -o -E '[0-9a-f]{4}:[0-9a-f]{4}' | head -1)
+        echo -e "${GREEN}[✓] 找到相关音频设备: $audio_device${NC}"
+        echo -e "${GREEN}[✓] 音频设备ID: $audio_pci_id${NC}"
+        echo -e "${GREEN}[i] 此音频设备将自动与GPU一起直通${NC}"
+    else
+        echo -e "${YELLOW}[!] 未找到相关音频设备${NC}"
+        audio_pci_id=""
+    fi
+    
+    # 将设备ID保存到配置文件
+    echo -e "${BLUE}[+] 保存VFIO设备配置...${NC}"
+    
+    # 创建YAML格式的配置文件
+    echo "devices:" > "$CONFIG_DIR/vfio_devices.yaml"
+    echo "  - \"${gpu_pci_id//:}\"" >> "$CONFIG_DIR/vfio_devices.yaml"
+    
+    if [ -n "$audio_pci_id" ]; then
+        echo "  - \"${audio_pci_id//:}\"" >> "$CONFIG_DIR/vfio_devices.yaml"
+    fi
+    
+    echo -e "${GREEN}[✓] VFIO设备配置已保存至 $CONFIG_DIR/vfio_devices.yaml${NC}"
+    
+    # 返回设备ID列表，用逗号分隔
+    if [ -n "$audio_pci_id" ]; then
+        echo "${gpu_pci_id//:},${audio_pci_id//:}"
+    else
+        echo "${gpu_pci_id//:}"
+    fi
+}
+
+# 配置GRUB以启用IOMMU和VFIO
+configure_grub() {
+    local iommu_param=$1
+    local device_ids=$2
+    
+    echo -e "${BLUE}[+] 配置GRUB启动参数...${NC}"
     
     # 备份GRUB配置
-    cp $GRUB_CONFIG ${GRUB_CONFIG}.bak
-    echo "[i] 已备份GRUB配置至 ${GRUB_CONFIG}.bak"
-    
-    # 修改GRUB_CMDLINE_LINUX参数
-    if [[ $GRUB_CMDLINE == *'"'* ]]; then
-        # 有引号的情况，在引号内添加参数
-        sed -i "s|GRUB_CMDLINE_LINUX=\"\(.*\)\"|GRUB_CMDLINE_LINUX=\"\1 $IOMMU_PARAM\"|" $GRUB_CONFIG
-    else
-        # 没有引号的情况，添加引号和参数
-        sed -i "s|GRUB_CMDLINE_LINUX=\(.*\)|GRUB_CMDLINE_LINUX=\"\1 $IOMMU_PARAM\"|" $GRUB_CONFIG
+    if [ ! -f /etc/default/grub.backup ]; then
+        cp /etc/default/grub /etc/default/grub.backup
+        echo -e "${GREEN}[✓] GRUB配置已备份${NC}"
     fi
     
-    echo "[√] GRUB配置已更新，添加了IOMMU支持"
+    # 读取当前GRUB配置
+    local grub_cmdline=$(grep GRUB_CMDLINE_LINUX /etc/default/grub | cut -d'"' -f2)
     
-    # 更新GRUB配置
-    if command -v grub2-mkconfig &> /dev/null; then
+    # 添加IOMMU和VFIO参数
+    local new_params="$iommu_param iommu=pt rd.driver.pre=vfio-pci rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1 vfio-pci.ids=$device_ids module_blacklist=nouveau"
+    
+    # 创建新的命令行参数，简单地清除旧的关键字并添加新参数
+    local clean_cmdline=$(echo "$grub_cmdline" | \
+        sed -e 's/intel_iommu=[^ ]*//g' \
+        -e 's/amd_iommu=[^ ]*//g' \
+        -e 's/iommu=[^ ]*//g' \
+        -e 's/rd\.driver\.pre=[^ ]*//g' \
+        -e 's/rd\.driver\.blacklist=[^ ]*//g' \
+        -e 's/modprobe\.blacklist=[^ ]*//g' \
+        -e 's/nvidia-drm\.modeset=[^ ]*//g' \
+        -e 's/vfio-pci\.ids=[^ ]*//g' \
+        -e 's/module_blacklist=[^ ]*//g' \
+        -e 's/  / /g' -e 's/^ *//' -e 's/ *$//')
+    
+    # 组合新的GRUB命令行
+    local new_cmdline="$clean_cmdline $new_params"
+    new_cmdline=$(echo "$new_cmdline" | sed -e 's/^ *//' -e 's/ *$//')
+    
+    # 更新GRUB配置，使用不同的分隔符避免路径问题
+    sed -i "s|GRUB_CMDLINE_LINUX=.*|GRUB_CMDLINE_LINUX=\"$new_cmdline\"|" /etc/default/grub
+    
+    echo -e "${GREEN}[✓] GRUB配置已更新${NC}"
+    
+    # 更新GRUB
+    echo -e "${BLUE}[+] 更新GRUB引导...${NC}"
+    if [ -f /boot/grub2/grub.cfg ]; then
         grub2-mkconfig -o /boot/grub2/grub.cfg
+    elif [ -f /boot/grub/grub.cfg ]; then
+        grub-mkconfig -o /boot/grub/grub.cfg
     else
-        update-grub
+        echo -e "${RED}[错误] 找不到GRUB配置文件${NC}"
+        return 1
     fi
     
-    echo "[√] GRUB配置已重新生成"
+    echo -e "${GREEN}[✓] GRUB已更新${NC}"
 }
 
-# 查找显卡及其相关设备
-find_gpu() {
-    echo "[+] 扫描可用显卡设备..."
+# 配置dracut以包含VFIO模块
+configure_dracut() {
+    echo -e "${BLUE}[+] 配置dracut以包含VFIO模块...${NC}"
     
-    # 创建配置目录
-    mkdir -p config
+    # 创建dracut配置 - 移除可能不存在的vfio_virqfd模块
+    echo 'add_drivers+=" vfio vfio_iommu_type1 vfio_pci "' > /etc/dracut.conf.d/local.conf
     
-    # 收集PCI设备信息
-    lspci -nnk > config/pci_devices.txt
+    # 重建initramfs
+    echo -e "${BLUE}[+] 重建initramfs...${NC}"
+    dracut -f --kver $(uname -r)
     
-    # 查找所有显卡
-    echo "[i] 检测到以下显卡设备:"
-    GPU_LIST=$(lspci | grep -i 'vga\|3d controller' | cut -d' ' -f1)
+    echo -e "${GREEN}[✓] dracut配置已完成${NC}"
+}
+
+# 创建GPU启用/禁用脚本
+create_gpu_toggle_scripts() {
+    local gpu_addr=$1
     
-    if [ -z "$GPU_LIST" ]; then
-        echo "[错误] 未检测到任何显卡设备"
+    echo -e "${BLUE}[+] 创建GPU切换脚本...${NC}"
+    
+    # 创建GPU管理脚本
+    cat > "$SCRIPT_DIR/switch_gpu.sh" << EOF
+#!/bin/bash
+# GPU切换脚本：在宿主机使用和VM直通之间切换
+
+# 颜色
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 无颜色
+
+# 检查是否以root身份运行
+if [ "\$(id -u)" -ne 0 ]; then
+    echo -e "\${RED}[错误] 此脚本需要以root权限运行\${NC}"
+    echo "请使用sudo运行此脚本"
+    exit 1
+fi
+
+# 显示当前状态
+show_status() {
+    echo -e "\${BLUE}[+] 检查GPU状态...\${NC}"
+    
+    if lspci -nnk | grep -A 2 "$gpu_addr" | grep -q "Kernel driver in use: vfio-pci"; then
+        echo -e "\${YELLOW}[!] GPU当前由VFIO-PCI驱动控制（适用于VM）\${NC}"
+        return 0  # 0 = VFIO模式
+    elif lspci -nnk | grep -A 2 "$gpu_addr" | grep -q "Kernel driver in use: nvidia"; then
+        echo -e "\${GREEN}[✓] GPU当前由NVIDIA驱动控制（适用于宿主机）\${NC}"
+        return 1  # 1 = NVIDIA模式
+    else
+        echo -e "\${RED}[错误] 无法确定当前GPU状态\${NC}"
         exit 1
     fi
-    
-    # 为每个显卡显示详细信息
-    IFS=$'\n'
-    GPU_COUNT=0
-    declare -a GPU_ARRAY
-    
-    for GPU_ID in $GPU_LIST; do
-        GPU_COUNT=$((GPU_COUNT + 1))
-        GPU_INFO=$(lspci -nnks $GPU_ID | grep -E "VGA|3D controller|Kernel driver" | tr '\n' ' ')
-        GPU_ARRAY+=("$GPU_ID: $GPU_INFO")
-        echo "[$GPU_COUNT] $GPU_ID: $GPU_INFO"
-    done
-    
-    # 选择要绑定的显卡
-    if [ $GPU_COUNT -gt 1 ]; then
-        echo "[i] 检测到多个显卡，请选择要用于VFIO直通的显卡编号 [1-$GPU_COUNT]:"
-        read -r GPU_SELECTION
-        
-        if ! [[ $GPU_SELECTION =~ ^[0-9]+$ ]] || [ $GPU_SELECTION -lt 1 ] || [ $GPU_SELECTION -gt $GPU_COUNT ]; then
-            echo "[错误] 无效选择"
-            exit 1
-        fi
-        
-        SELECTED_GPU_ID=$(echo "$GPU_LIST" | sed -n ${GPU_SELECTION}p)
-    else
-        echo "[警告] 只检测到一个显卡。如果您绑定此显卡到VFIO，主机将无法显示图形界面。"
-        echo "请确保您有其他显示输出可用或可以通过SSH远程访问。"
-        echo "是否继续? (y/n)"
-        read -r CONTINUE
-        
-        if [[ $CONTINUE != "y" && $CONTINUE != "Y" ]]; then
-            echo "[i] 操作已取消"
-            exit 0
-        fi
-        
-        SELECTED_GPU_ID=$(echo "$GPU_LIST" | head -n1)
-    fi
-    
-    echo "[i] 已选择显卡: $SELECTED_GPU_ID"
-    
-    # 获取显卡的Vendor:Device ID
-    GPU_VENDOR_ID=$(lspci -nns $SELECTED_GPU_ID | grep -oP '(?<=\[)[a-f0-9]{4}:[a-f0-9]{4}(?=\])')
-    echo "[i] 显卡 Vendor:Device ID: $GPU_VENDOR_ID"
-    
-    # 寻找同一IOMMU组的相关设备(音频等)
-    echo "[+] 检测显卡相关设备(同一IOMMU组)..."
-    
-    # 获取IOMMU组信息
-    for d in /sys/kernel/iommu_groups/*/devices/*; do
-        if [ -e "$d/vendor" ] && [ -e "$d/device" ]; then
-            DEV_PATH=$(basename "$d")
-            if [ "$DEV_PATH" = "$SELECTED_GPU_ID" ]; then
-                IOMMU_GROUP=$(basename $(dirname $(dirname "$d")))
-                echo "[i] 显卡所在的IOMMU组: $IOMMU_GROUP"
-                break
-            fi
-        fi
-    done
-    
-    # 查找同一IOMMU组的所有设备
-    if [ -n "$IOMMU_GROUP" ]; then
-        echo "[i] IOMMU组 $IOMMU_GROUP 中的所有设备:"
-        GPU_RELATED_DEVICES=()
-        
-        for dev in /sys/kernel/iommu_groups/$IOMMU_GROUP/devices/*; do
-            DEV_ID=$(basename "$dev")
-            DEV_INFO=$(lspci -nns $DEV_ID)
-            echo "    $DEV_INFO"
-            
-            # 提取vendor:device ID
-            VENDOR_DEVICE=$(echo "$DEV_INFO" | grep -oP '(?<=\[)[a-f0-9]{4}:[a-f0-9]{4}(?=\])')
-            GPU_RELATED_DEVICES+=("$VENDOR_DEVICE")
-        done
-    else
-        echo "[警告] 无法确定显卡的IOMMU组，将只绑定显卡本身"
-        GPU_RELATED_DEVICES=("$GPU_VENDOR_ID")
-    fi
-    
-    # 保存设备信息到配置文件
-    echo "[+] 保存设备信息到配置文件..."
-    
-    cat > config/vfio_devices.yaml <<EOL
-# 通过VFIO直通的设备列表
-devices:
-EOL
-    
-    for dev_id in "${GPU_RELATED_DEVICES[@]}"; do
-        echo "  - '$dev_id'  # $(lspci | grep -i "$(echo $dev_id | cut -d: -f1)")"  >> config/vfio_devices.yaml
-    done
-    
-    echo "[√] 设备信息已保存到 config/vfio_devices.yaml"
 }
 
-# 配置VFIO模块和绑定脚本
-configure_vfio() {
-    echo "[+] 配置VFIO模块加载..."
+# 启用NVIDIA驱动（宿主机使用）
+enable_nvidia() {
+    echo -e "\${BLUE}[+] 启用NVIDIA驱动...\${NC}"
     
-    # 确保VFIO模块会被加载
-    if ! grep -q vfio /etc/modules 2>/dev/null && [ -f /etc/modules ]; then
-        echo "vfio" >> /etc/modules
-        echo "vfio_iommu_type1" >> /etc/modules
-        echo "vfio_pci" >> /etc/modules
-        echo "vfio_virqfd" >> /etc/modules 2>/dev/null || true  # 某些系统可能没有这个模块
-    fi
+    echo -e "\${BLUE}[1/3] 将GPU重新附加到主机...\${NC}"
+    virsh nodedev-reattach pci_0000_${gpu_addr//:/_} || return 1
+    echo -e "\${GREEN}[✓] GPU已重新附加\${NC}"
     
-    # 创建VFIO配置
-    echo "[+] 创建VFIO设备配置..."
+    echo -e "\${BLUE}[2/3] 移除VFIO驱动...\${NC}"
+    rmmod vfio_pci vfio_pci_core vfio_iommu_type1 || true
+    echo -e "\${GREEN}[✓] VFIO驱动已移除\${NC}"
     
-    # 从YAML文件读取设备ID（简化版，生产环境建议使用Python和yaml库）
-    DEVICE_IDS=$(grep -oP "(?<=').*?(?=')" config/vfio_devices.yaml)
+    echo -e "\${BLUE}[3/3] 加载NVIDIA驱动...\${NC}"
+    modprobe -i nvidia_modeset nvidia_uvm nvidia || return 1
+    echo -e "\${GREEN}[✓] NVIDIA驱动已加载\${NC}"
     
-    VFIO_CONF="/etc/modprobe.d/vfio.conf"
-    OPTIONS="options vfio-pci ids="
+    echo -e "\${GREEN}[✓] GPU已切换到宿主机模式\${NC}"
+    return 0
+}
+
+# 启用VFIO驱动（VM使用）
+enable_vfio() {
+    echo -e "\${BLUE}[+] 启用VFIO驱动...\${NC}"
     
-    for id in $DEVICE_IDS; do
-        OPTIONS+="$id,"
-    done
+    echo -e "\${BLUE}[1/3] 移除NVIDIA驱动...\${NC}"
+    rmmod nvidia_modeset nvidia_uvm nvidia || true
+    echo -e "\${GREEN}[✓] NVIDIA驱动已移除\${NC}"
     
-    # 移除最后的逗号
-    OPTIONS=${OPTIONS%,}
+    echo -e "\${BLUE}[2/3] 加载VFIO驱动...\${NC}"
+    modprobe -i vfio_pci vfio_pci_core vfio_iommu_type1 || return 1
+    echo -e "\${GREEN}[✓] VFIO驱动已加载\${NC}"
     
-    # 写入配置文件
-    echo "$OPTIONS" > $VFIO_CONF
-    echo "[√] VFIO配置已写入 $VFIO_CONF"
+    echo -e "\${BLUE}[3/3] 将GPU分离到VFIO...\${NC}"
+    virsh nodedev-detach pci_0000_${gpu_addr//:/_} || return 1
+    echo -e "\${GREEN}[✓] GPU已分离\${NC}"
     
-    # 更新initramfs
-    echo "[+] 更新initramfs以应用VFIO配置..."
+    echo -e "\${GREEN}[✓] GPU已切换到VM直通模式\${NC}"
+    return 0
+}
+
+# 主逻辑
+if [ "\$1" == "nvidia" ] || [ "\$1" == "host" ]; then
+    enable_nvidia
+elif [ "\$1" == "vfio" ] || [ "\$1" == "vm" ]; then
+    enable_vfio
+elif [ "\$1" == "status" ]; then
+    show_status
+    exit \$?
+else
+    # 自动切换模式
+    show_status
+    current_mode=\$?
     
-    if command -v dracut &> /dev/null; then
-        dracut --force
-    elif command -v update-initramfs &> /dev/null; then
-        update-initramfs -u
+    if [ \$current_mode -eq 0 ]; then
+        # 当前为VFIO模式，切换到NVIDIA
+        enable_nvidia
     else
-        echo "[警告] 无法找到dracut或update-initramfs命令，请手动更新initramfs"
+        # 当前为NVIDIA模式，切换到VFIO
+        enable_vfio
     fi
+fi
+
+# 显示最终状态
+show_status
+EOF
+
+    # 设置执行权限
+    chmod +x "$SCRIPT_DIR/switch_gpu.sh"
     
-    echo "[√] initramfs已更新"
+    # 创建GPU管理脚本
+    cat > "$SCRIPT_DIR/gpu-manager.sh" << EOF
+#!/bin/bash
+# GPU管理器 - 为使用AntiCheatVM的用户提供友好的GPU管理界面
+
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 无颜色
+
+SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+
+# 显示GPU状态
+show_status() {
+    echo -e "\${BLUE}[i] 当前状态:\${NC}"
+    sudo "\$SCRIPT_DIR/switch_gpu.sh" status
+    echo ""
+}
+
+# 主菜单
+show_menu() {
+    clear
+    echo "=================================================="
+    echo "          AntiCheatVM - GPU管理器"
+    echo "=================================================="
+    show_status
+    echo "请选择操作:"
+    echo "1) 切换GPU到宿主机模式 (使用NVIDIA驱动)"
+    echo "2) 切换GPU到VM直通模式 (使用VFIO驱动)"
+    echo "3) 退出"
+    echo ""
+    read -p "请输入选项 [1-3]: " choice
+    
+    case \$choice in
+        1)
+            echo -e "\${BLUE}[+] 切换GPU到宿主机模式...\${NC}"
+            sudo "\$SCRIPT_DIR/switch_gpu.sh" nvidia
+            read -p "按回车键继续..." dummy
+            show_menu
+            ;;
+        2)
+            echo -e "\${BLUE}[+] 切换GPU到VM直通模式...\${NC}"
+            sudo "\$SCRIPT_DIR/switch_gpu.sh" vfio
+            read -p "按回车键继续..." dummy
+            show_menu
+            ;;
+        3)
+            echo -e "\${GREEN}[i] 退出程序\${NC}"
+            exit 0
+            ;;
+        *)
+            echo -e "\${RED}[错误] 无效的选项\${NC}"
+            read -p "按回车键继续..." dummy
+            show_menu
+            ;;
+    esac
+}
+
+# 启动主菜单
+show_menu
+EOF
+
+    # 设置执行权限
+    chmod +x "$SCRIPT_DIR/gpu-manager.sh"
+    
+    # 创建别名文件
+    cat > "$SCRIPT_DIR/aliases.sh" << EOF
+# AntiCheatVM 别名和函数
+# 将此文件添加到你的~/.bashrc: source /path/to/aliases.sh
+
+# GPU状态查看
+alias hows-my-gpu='echo "NVIDIA Dedicated Graphics" | grep "NVIDIA" && lspci -nnk | grep "$gpu_addr" -A 2 | grep "Kernel driver in use" && echo "Enable and disable the dedicated NVIDIA GPU with nvidia-enable and nvidia-disable"'
+
+# GPU切换别名
+alias nvidia-enable='sudo $SCRIPT_DIR/switch_gpu.sh nvidia'
+alias nvidia-disable='sudo $SCRIPT_DIR/switch_gpu.sh vfio'
+
+# Looking Glass简化命令
+alias looking-glass='looking-glass-client -s -m 97'
+EOF
+
+    echo -e "${GREEN}[✓] GPU切换脚本已创建${NC}"
+    echo -e "${YELLOW}[i] 请将aliases.sh添加到您的~/.bashrc文件以启用便捷命令${NC}"
+    echo "    echo 'source $SCRIPT_DIR/aliases.sh' >> ~/.bashrc"
 }
 
 # 主函数
 main() {
-    check_cpu_support
-    configure_grub
-    find_gpu
-    configure_vfio
+    # 列出所有PCI设备
+    list_pci_devices
     
-    echo "======================================================"
-    echo "[AntiCheatVM] VFIO配置已完成! 系统需要重启以应用更改。"
-    echo ""
-    echo "请检查以下配置文件确认无误:"
-    echo "  - /etc/default/grub (IOMMU参数)"
-    echo "  - /etc/modprobe.d/vfio.conf (设备直通)"
-    echo "  - config/vfio_devices.yaml (设备列表)"
-    echo ""
-    echo "重启后，请继续运行create_vm.py创建虚拟机配置。"
-    echo ""
-    echo "是否立即重启? (y/n)"
-    read -r REBOOT
+    # 检测CPU类型并确定IOMMU参数
+    iommu_param=$(detect_cpu_type)
     
-    if [[ $REBOOT == "y" || $REBOOT == "Y" ]]; then
-        echo "系统将在5秒后重启..."
+    # 检查IOMMU状态
+    check_iommu
+    
+    # 获取GPU设备ID
+    device_ids=$(get_gpu_devices)
+    
+    # 配置GRUB
+    configure_grub "$iommu_param" "$device_ids"
+    
+    # 配置dracut
+    configure_dracut
+    
+    # 获取GPU地址 - 使用更简单的方法
+    echo -e "${BLUE}[+] 获取GPU地址...${NC}"
+    
+    # 直接从 lspci 输出中获取
+    gpu_id_part=$(echo $device_ids | cut -d',' -f1)
+    gpu_id_formatted=$(echo $gpu_id_part | sed 's/\(..\)\(..\)/\1:\2/')
+    gpu_addr=""
+    
+    # 使用 lspci 安全地查找
+    while read -r line; do
+        if echo "$line" | grep -q "$gpu_id_formatted"; then
+            gpu_addr=$(echo "$line" | awk '{print $1}')
+            break
+        fi
+    done < <(lspci -nn)
+    
+    # 如果找不到，使用默认值
+    if [ -z "$gpu_addr" ]; then
+        echo -e "${YELLOW}[!] 无法获取GPU地址，尝试其他方法...${NC}"
+        
+        # 尝试从配置文件读取
+        selected_gpu=$(cat $CONFIG_DIR/vfio_devices.yaml | grep -m 1 "\"" | tr -d ' "' | tr -d '-')
+        
+        while read -r line; do
+            if echo "$line" | grep -q "$gpu_id_formatted"; then
+                gpu_addr=$(echo "$line" | awk '{print $1}')
+                break
+            fi
+        done < <(lspci -nn)
+        
+        if [ -z "$gpu_addr" ]; then
+            echo -e "${YELLOW}[!] 尝试从选择编号直接获取...${NC}"
+            
+            # 假设用户选择了正确的GPU（通常为独立显卡）
+            gpu_info=$(lspci -nn | grep -i "NVIDIA" | grep -i "VGA" | head -1)
+            
+            if [ -n "$gpu_info" ]; then
+                gpu_addr=$(echo "$gpu_info" | awk '{print $1}')
+            else
+                echo -e "${RED}[错误] 无法自动获取GPU地址${NC}"
+                echo -e "${YELLOW}[!] 请手动输入GPU地址（例如：01:00.0）${NC}"
+                read -p "GPU地址: " gpu_addr
+                
+                if [ -z "$gpu_addr" ]; then
+                    gpu_addr="01:00.0"  # 默认值
+                fi
+            fi
+        fi
+    fi
+    
+    echo -e "${GREEN}[✓] 使用GPU地址: $gpu_addr${NC}"
+    
+    # 创建GPU切换脚本
+    create_gpu_toggle_scripts "$gpu_addr"
+    
+    echo ""
+    echo -e "${GREEN}[✓] VFIO配置已完成!${NC}"
+    echo ""
+    echo -e "${YELLOW}[i] 下一步:${NC}"
+    echo "1. 重启系统使IOMMU和VFIO设置生效"
+    echo "2. 重启后，运行 '$SCRIPT_DIR/gpu-manager.sh' 管理GPU驱动"
+    echo "3. 然后使用 create_vm.py 创建Windows虚拟机"
+    
+    # 询问是否立即重启
+    read -p "是否立即重启系统 (推荐)? (y/n): " restart
+    if [[ "$restart" == "y" || "$restart" == "Y" ]]; then
+        echo -e "${BLUE}[+] 系统将在5秒后重启...${NC}"
         sleep 5
         reboot
-    else
-        echo "您选择了稍后重启。请在方便时手动重启系统。"
-        echo "要使VFIO设置生效，重启是必要的。"
     fi
 }
 

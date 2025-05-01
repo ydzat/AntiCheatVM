@@ -1,257 +1,191 @@
 #!/bin/bash
-###
- # @Author: @ydzat
- # @Date: 2025-04-29 20:35:25
- # @LastEditors: @ydzat
- # @LastEditTime: 2025-04-29 20:35:25
- # @Description: Stop Windows VM and release resources
-### 
+# AntiCheatVM 停止脚本
+# 安全关闭虚拟机并清理资源
 
-# Script directory
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 无颜色
+
+# 脚本目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Default parameters
-DEFAULT_VM_NAME="AntiCheatVM"
-FORCE_SHUTDOWN=0
-TIMEOUT=30  # Wait timeout for shutdown (seconds)
-CLEAN_HUGEPAGES=1
+# 默认虚拟机名称
+VM_NAME="AntiCheatVM"
 
-# Help information
-show_help() {
-    echo "Usage: $0 [options]"
-    echo ""
-    echo "Options:"
-    echo "  -n, --name NAME            Specify VM name (default: AntiCheatVM)"
-    echo "  -f, --force                Force VM shutdown (skip normal shutdown)"
-    echo "  -t, --timeout SECONDS      Shutdown wait timeout (default: 30 seconds)"
-    echo "  --no-clean-hugepages       Do not clean HugePages"
-    echo "  -h, --help                 Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0 --name MyWindows10VM"
-    echo "  $0 --force"
-    echo "  $0 --timeout 60"
-    echo ""
-}
+# 解析命令行参数
+FORCE=false
+REATTACH_GPU=false
 
-# Parse command line arguments
-parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -n|--name)
-                VM_NAME="$2"
-                shift 2
-                ;;
-            --name=*)
-                VM_NAME="${1#*=}"
-                shift
-                ;;
-            -f|--force)
-                FORCE_SHUTDOWN=1
-                shift
-                ;;
-            -t|--timeout)
-                TIMEOUT="$2"
-                shift 2
-                ;;
-            --timeout=*)
-                TIMEOUT="${1#*=}"
-                shift
-                ;;
-            --no-clean-hugepages)
-                CLEAN_HUGEPAGES=0
-                shift
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                echo "Error: Unknown parameter $1"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
+# 解析参数
+for arg in "$@"
+do
+    case $arg in
+        --force)
+        FORCE=true
+        shift
+        ;;
+        --reattach-gpu)
+        REATTACH_GPU=true
+        shift
+        ;;
+        --vm=*)
+        VM_NAME="${arg#*=}"
+        shift
+        ;;
+        *)
+        # 未知参数
+        ;;
+    esac
+done
 
-    # If VM name not specified, use default name
-    VM_NAME=${VM_NAME:-$DEFAULT_VM_NAME}
-}
+echo "=================================================="
+echo " AntiCheatVM 停止程序 - $VM_NAME"
+echo "=================================================="
 
-# Check if VM exists
-check_vm_exists() {
-    local vm_name="$1"
-    if ! virsh dominfo "$vm_name" &>/dev/null; then
-        echo "[ERROR] VM '$vm_name' does not exist or is not registered with libvirt"
-        exit 1
-    fi
-}
-
-# Check if VM is running
+# 检查虚拟机是否存在并运行
 check_vm_running() {
-    local vm_name="$1"
-    if ! virsh domstate "$vm_name" 2>/dev/null | grep -q "running"; then
-        echo "[i] VM '$vm_name' is not running"
+    echo -e "${BLUE}[+] 检查虚拟机状态...${NC}"
+    
+    if ! virsh list | grep -q "$VM_NAME"; then
+        echo -e "${YELLOW}[!] 虚拟机 $VM_NAME 未运行${NC}"
+        
+        # 检查虚拟机是否存在
+        if ! virsh list --all | grep -q "$VM_NAME"; then
+            echo -e "${RED}[错误] 虚拟机 $VM_NAME 不存在${NC}"
+            exit 1
+        fi
+        
         return 1
     fi
+    
+    echo -e "${GREEN}[✓] 虚拟机 $VM_NAME 正在运行${NC}"
     return 0
 }
 
-# Shutdown VM
-shutdown_vm() {
-    local vm_name="$1"
-    local force="$2"
-    local timeout="$3"
+# 停止虚拟机
+stop_vm() {
+    echo -e "${BLUE}[+] 停止虚拟机 $VM_NAME...${NC}"
     
-    # If VM is not running, no action needed
-    if ! check_vm_running "$vm_name"; then
-        return 0
-    fi
-    
-    # If force shutdown, use destroy command directly
-    if [ "$force" -eq 1 ]; then
-        echo "[!] Forcing VM '$vm_name' shutdown..."
-        virsh destroy "$vm_name"
-        sleep 2
-        
-        if check_vm_running "$vm_name"; then
-            echo "[ERROR] Cannot force shutdown VM"
-            return 1
-        else
-            echo "[✓] VM has been forcefully shut down"
-            return 0
-        fi
-    fi
-    
-    # Try normal shutdown
-    echo "[+] Shutting down VM '$vm_name'..."
-    virsh shutdown "$vm_name"
-    
-    # Wait for VM to shutdown, up to timeout seconds
-    echo "[i] Waiting for VM to shutdown (max $timeout seconds)..."
-    for ((i=1; i<=timeout; i++)); do
-        if ! check_vm_running "$vm_name"; then
-            echo "[✓] VM has shut down normally"
-            return 0
-        fi
-        
-        # Show progress every 10 seconds
-        if [ $((i % 10)) -eq 0 ]; then
-            echo "[i] Still waiting for VM to shutdown... ($i/$timeout seconds)"
-        fi
-        
-        sleep 1
-    done
-    
-    # If timeout, ask whether to force shutdown
-    echo "[WARNING] VM shutdown timed out"
-    read -p "Force shutdown? (y/n): " answer
-    if [[ "$answer" == "y" || "$answer" == "Y" ]]; then
-        echo "[!] Forcing VM shutdown..."
-        virsh destroy "$vm_name"
-        sleep 2
-        
-        if check_vm_running "$vm_name"; then
-            echo "[ERROR] Cannot force shutdown VM"
-            return 1
-        else
-            echo "[✓] VM has been forcefully shut down"
-            return 0
-        fi
+    if [ "$FORCE" = true ]; then
+        echo -e "${YELLOW}[!] 强制关闭虚拟机...${NC}"
+        virsh destroy "$VM_NAME"
     else
-        echo "[i] Force shutdown cancelled, VM is still running"
+        echo -e "${BLUE}[+] 正常关闭虚拟机（等待操作系统关闭）...${NC}"
+        virsh shutdown "$VM_NAME"
+        
+        # 等待虚拟机关闭，最多等待60秒
+        echo -e "${BLUE}[+] 等待虚拟机关闭...${NC}"
+        
+        for i in {1..60}; do
+            if ! virsh list | grep -q "$VM_NAME"; then
+                echo -e "${GREEN}[✓] 虚拟机已关闭${NC}"
+                break
+            fi
+            
+            # 每10秒显示一次提示
+            if [ $((i % 10)) -eq 0 ]; then
+                echo -e "${YELLOW}[!] 仍在等待虚拟机关闭... (${i}s)${NC}"
+                echo -e "${YELLOW}[!] 使用 --force 参数可强制关闭${NC}"
+            fi
+            
+            sleep 1
+        done
+        
+        # 如果虚拟机仍在运行，询问是否强制关闭
+        if virsh list | grep -q "$VM_NAME"; then
+            echo -e "${YELLOW}[!] 虚拟机未能在60秒内关闭${NC}"
+            read -p "是否强制关闭虚拟机? (y/n): " force_shutdown
+            
+            if [[ "$force_shutdown" == "y" || "$force_shutdown" == "Y" ]]; then
+                echo -e "${YELLOW}[!] 强制关闭虚拟机...${NC}"
+                virsh destroy "$VM_NAME"
+            else
+                echo -e "${YELLOW}[!] 保持虚拟机运行${NC}"
+                return 1
+            fi
+        fi
+    fi
+    
+    # 最终检查
+    if virsh list | grep -q "$VM_NAME"; then
+        echo -e "${RED}[错误] 无法关闭虚拟机${NC}"
         return 1
     fi
+    
+    echo -e "${GREEN}[✓] 虚拟机已成功关闭${NC}"
+    return 0
 }
 
-# Clean HugePages
+# 清理大页内存
 cleanup_hugepages() {
-    if [ "$CLEAN_HUGEPAGES" -eq 1 ]; then
-        echo "[+] Cleaning up HugePages..."
-        
-        # Check if HugePages are allocated
-        local allocated_pages=$(cat /proc/sys/vm/nr_hugepages 2>/dev/null || echo "0")
-        
-        if [ "$allocated_pages" -gt 0 ]; then
-            echo "[i] Allocated HugePages: $allocated_pages"
-            echo "[+] Releasing HugePages..."
-            
-            # Release HugePages (set to 0)
-            echo 0 | sudo tee /proc/sys/vm/nr_hugepages > /dev/null
-            
-            # Verify release result
-            local current_pages=$(cat /proc/sys/vm/nr_hugepages 2>/dev/null || echo "0")
-            if [ "$current_pages" -eq 0 ]; then
-                echo "[✓] HugePages released"
-            else
-                echo "[WARNING] Could not fully release HugePages (remaining: $current_pages)"
-                echo "[i] Other processes may be using HugePages"
-            fi
-        else
-            echo "[i] No allocated HugePages"
-        fi
-    fi
+    echo -e "${BLUE}[+] 释放大页内存...${NC}"
+    echo 0 | sudo tee /proc/sys/vm/nr_hugepages > /dev/null
+    echo -e "${GREEN}[✓] 大页内存已释放${NC}"
+    return 0
 }
 
-# Stop Looking Glass client
-stop_looking_glass() {
-    echo "[+] Checking Looking Glass process..."
+# 重新附加GPU到宿主机
+reattach_gpu() {
+    if [ "$REATTACH_GPU" = true ]; then
+        echo -e "${BLUE}[+] 重新附加GPU到宿主机...${NC}"
+        
+        # 调用GPU切换脚本
+        sudo "$SCRIPT_DIR/switch_gpu.sh" nvidia
+        
+        if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}[!] GPU重新附加遇到问题${NC}"
+            echo "您可以稍后手动运行 '$SCRIPT_DIR/gpu-manager.sh' 管理GPU驱动"
+        else
+            echo -e "${GREEN}[✓] GPU已重新附加到宿主机${NC}"
+        fi
+    fi
     
-    # Check if Looking Glass client is running
-    if pgrep -f "looking-glass-client" > /dev/null; then
-        echo "[+] Closing Looking Glass client..."
-        pkill -f "looking-glass-client"
-        sleep 1
-        
-        # Check again if terminated
-        if pgrep -f "looking-glass-client" > /dev/null; then
-            echo "[WARNING] Could not close Looking Glass client normally, attempting force kill..."
-            pkill -9 -f "looking-glass-client"
-            sleep 1
-            
-            if pgrep -f "looking-glass-client" > /dev/null; then
-                echo "[ERROR] Cannot terminate Looking Glass client"
-            else
-                echo "[✓] Looking Glass client terminated"
-            fi
-        else
-            echo "[✓] Looking Glass client closed"
-        fi
-    else
-        echo "[i] Looking Glass client is not running"
-    fi
+    return 0
 }
 
-# Main function
+# 杀死可能正在运行的Looking Glass实例
+kill_looking_glass() {
+    echo -e "${BLUE}[+] 检查Looking Glass进程...${NC}"
+    
+    if pgrep -x "looking-glass-client" > /dev/null; then
+        echo -e "${YELLOW}[!] 发现正在运行的Looking Glass实例，正在关闭...${NC}"
+        pkill -x "looking-glass-client"
+        echo -e "${GREEN}[✓] Looking Glass进程已终止${NC}"
+    fi
+    
+    return 0
+}
+
+# 主函数
 main() {
-    echo "======================================================"
-    echo " AntiCheatVM - Virtual Machine Shutdown Tool"
-    echo "======================================================"
+    # 杀死正在运行的Looking Glass进程
+    kill_looking_glass
     
-    # Parse command line arguments
-    parse_args "$@"
-    
-    # Check if VM exists
-    check_vm_exists "$VM_NAME"
-    
-    # If VM is running, shut it down
-    if check_vm_running "$VM_NAME"; then
-        if ! shutdown_vm "$VM_NAME" "$FORCE_SHUTDOWN" "$TIMEOUT"; then
-            echo "[ERROR] Cannot shut down VM, please check status or manual operation"
+    # 检查虚拟机是否正在运行
+    if check_vm_running; then
+        # 尝试停止虚拟机
+        if ! stop_vm; then
+            echo -e "${YELLOW}[!] 虚拟机关闭操作未完成${NC}"
             exit 1
         fi
     fi
     
-    # Stop Looking Glass client
-    stop_looking_glass
-    
-    # Clean HugePages
+    # 清理大页内存
     cleanup_hugepages
     
-    echo "======================================================"
-    echo "[AntiCheatVM] VM has been shut down, resources released"
-    echo "======================================================"
+    # 重新附加GPU（如果请求）
+    reattach_gpu
+    
+    echo ""
+    echo -e "${GREEN}[✓] 虚拟机停止流程完成!${NC}"
+    echo ""
+    echo -e "${YELLOW}[i] 提示:${NC}"
+    echo "1. 使用 '$SCRIPT_DIR/start_vm.sh' 启动虚拟机"
+    echo "2. 使用 '$SCRIPT_DIR/gpu-manager.sh' 管理GPU驱动状态"
 }
 
-# Execute main function
-main "$@"
+# 执行主函数
+main

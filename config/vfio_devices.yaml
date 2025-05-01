@@ -1,3 +1,3 @@
-# 通过VFIO直通的设备列表
 devices:
-  - '10de:2820'  # NVIDIA Corporation AD106M [GeForce RTX 4070 Max-Q / Mobile]
+  - "10de22bd"
+  - "10de22bd"

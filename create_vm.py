@@ -182,7 +182,14 @@ def generate_vm_xml(vm_name, disk_path, memory_gb, vcpus, vfio_devices):
     # 添加VFIO直通设备
     print("[+] 添加 VFIO 直通设备...")
     for dev_id in vfio_devices:
-        vendor_id, device_id = dev_id.split(":")
+        # 处理两种可能的格式：带冒号分隔的和不带冒号的
+        if ":" in dev_id:
+            vendor_id, device_id = dev_id.split(":")
+        else:
+            # 假设前4个字符是vendor_id，剩下的是device_id
+            vendor_id = dev_id[:4]
+            device_id = dev_id[4:]
+        
         hostdev = etree.SubElement(devices, "hostdev", mode="subsystem", type="pci", managed="yes")
         source = etree.SubElement(hostdev, "source")
         etree.SubElement(source, "vendor", id="0x" + vendor_id)

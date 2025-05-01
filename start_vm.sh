@@ -1,288 +1,276 @@
 #!/bin/bash
-###
- # @Author: @ydzat
- # @Date: 2025-04-29 20:25:30
- # @LastEditors: @ydzat
- # @LastEditTime: 2025-04-29 22:49:26
- # @Description: Start Windows VM with optimized settings
-### 
+# AntiCheatVM 启动脚本
+# 包含必要的性能优化和GPU直通配置
 
-# Script directory
+# 颜色定义
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # 无颜色
+
+# 脚本目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VMS_DIR="${SCRIPT_DIR}/vms"
 
-# Default parameters
-DEFAULT_VM_NAME="AntiCheatVM"
-USE_HUGEPAGES=0
-LOOKING_GLASS=1
+# 默认虚拟机名称
+VM_NAME="AntiCheatVM"
 
-# Help information
-show_help() {
-    echo "Usage: $0 [options]"
-    echo ""
-    echo "Options:"
-    echo "  -n, --name NAME            Specify VM name (default: AntiCheatVM)"
-    echo "  -l, --looking-glass        Enable Looking Glass (default: enabled)"
-    echo "  -H, --hugepages            Enable HugePages memory (default: disabled)"
-    echo "  -h, --help                 Show this help message"
-    echo ""
-    echo "Examples:"
-    echo "  $0 --name MyWindows10VM --hugepages"
-    echo "  $0 --no-looking-glass"
-    echo ""
-}
+# 解析命令行参数
+LOOKING_GLASS=false
+BYPASS_GPU_CHECK=false
 
-# Parse command line arguments
-parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -n|--name)
-                VM_NAME="$2"
-                shift 2
-                ;;
-            --name=*)
-                VM_NAME="${1#*=}"
-                shift
-                ;;
-            -l|--looking-glass)
-                LOOKING_GLASS=1
-                shift
-                ;;
-            --no-looking-glass)
-                LOOKING_GLASS=0
-                shift
-                ;;
-            -H|--hugepages)
-                USE_HUGEPAGES=1
-                shift
-                ;;
-            -h|--help)
-                show_help
-                exit 0
-                ;;
-            *)
-                echo "Error: Unknown parameter $1"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
+# 解析参数
+for arg in "$@"
+do
+    case $arg in
+        --lg|--looking-glass)
+        LOOKING_GLASS=true
+        shift
+        ;;
+        --bypass-gpu-check)
+        BYPASS_GPU_CHECK=true
+        shift
+        ;;
+        --vm=*)
+        VM_NAME="${arg#*=}"
+        shift
+        ;;
+        *)
+        # 未知参数
+        ;;
+    esac
+done
 
-    # If VM name not specified, use default name
-    VM_NAME=${VM_NAME:-$DEFAULT_VM_NAME}
-}
+echo "=================================================="
+echo " AntiCheatVM 启动程序 - $VM_NAME"
+echo "=================================================="
 
-# Check if VM exists
+# 检查虚拟机是否存在
 check_vm_exists() {
-    local vm_name="$1"
-    if ! virsh dominfo "$vm_name" &>/dev/null; then
-        echo "[ERROR] VM '$vm_name' does not exist or is not registered with libvirt"
-        echo "Please run create_vm.py to create a VM, or check the name is correct"
+    echo -e "${BLUE}[+] 检查虚拟机是否存在...${NC}"
+    
+    if ! virsh list --all | grep -q "$VM_NAME"; then
+        echo -e "${RED}[错误] 找不到虚拟机: $VM_NAME${NC}"
+        echo "请先使用 create_vm.py 创建虚拟机，或提供正确的虚拟机名称"
         exit 1
     fi
+    
+    echo -e "${GREEN}[✓] 虚拟机存在: $VM_NAME${NC}"
+    return 0
 }
 
-# Check if VM is already running
-check_vm_running() {
-    local vm_name="$1"
-    if virsh domstate "$vm_name" 2>/dev/null | grep -q "running"; then
-        echo "[WARNING] VM '$vm_name' is already running"
-        read -p "Continue (will restart the VM)? (y/n): " answer
-        if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
-            echo "Operation cancelled"
-            exit 0
-        fi
-        
-        echo "[+] Stopping VM..."
-        virsh shutdown "$vm_name"
-        
-        # Wait for VM to shutdown
-        for i in {1..30}; do
-            if ! virsh domstate "$vm_name" 2>/dev/null | grep -q "running"; then
-                echo "[✓] VM has stopped"
-                break
-            fi
-            echo -n "."
-            sleep 1
-        done
-        
-        # Force shutdown if VM is still running
-        if virsh domstate "$vm_name" 2>/dev/null | grep -q "running"; then
-            echo "[!] Could not shut down VM normally, forcing shutdown"
-            virsh destroy "$vm_name"
-            sleep 2
-        fi
-    fi
-}
-
-# Setup HugePages
-setup_hugepages() {
-    local vm_memory_kb=$(virsh dominfo "$VM_NAME" | grep "Max memory" | awk '{print $3}')
-    local vm_memory_mb=$((vm_memory_kb / 1024))
-    local hugepage_size=2048  # 2MB hugepages
-    local hugepage_count=$(($vm_memory_mb / $hugepage_size + 1))
+# 检查GPU状态
+check_gpu_status() {
+    echo -e "${BLUE}[+] 检查GPU状态...${NC}"
     
-    echo "[+] Setting up HugePages for VM..."
-    echo "[i] VM memory: ${vm_memory_mb}MB, Required hugepages: $hugepage_count"
-    
-    # Check current HugePages configuration
-    local current_pages=$(cat /proc/sys/vm/nr_hugepages 2>/dev/null || echo "0")
-    
-    if [ "$current_pages" -lt "$hugepage_count" ]; then
-        echo "[+] Setting HugePages count to $hugepage_count..."
-        echo "$hugepage_count" | sudo tee /proc/sys/vm/nr_hugepages > /dev/null
-        
-        # Check if successfully set
-        current_pages=$(cat /proc/sys/vm/nr_hugepages)
-        if [ "$current_pages" -lt "$hugepage_count" ]; then
-            echo "[WARNING] Could not allocate enough HugePages (requested: $hugepage_count, actual: $current_pages)"
-            echo "[i] Possible reasons: Memory fragmentation or insufficient available memory"
-            echo "[i] Will continue with available HugePages"
-        fi
-    else
-        echo "[i] Current HugePages configuration is sufficient ($current_pages pages)"
+    if [ "$BYPASS_GPU_CHECK" = true ]; then
+        echo -e "${YELLOW}[!] 跳过GPU检查...${NC}"
+        return 0
     fi
     
-    # Check free_hugepages
-    local free_pages=$(cat /proc/sys/vm/nr_hugepages_free 2>/dev/null || echo "0")
-    echo "[i] Available HugePages: $free_pages pages"
+    # 获取配置的VFIO设备
+    VFIO_CONFIG_FILE="$SCRIPT_DIR/config/vfio_devices.yaml"
     
-    # Return actual available HugePages count
-    echo "$free_pages"
-}
-
-# Start Looking Glass client
-start_looking_glass() {
-    echo "[+] Checking Looking Glass shared memory..."
-    
-    # Create shared memory file
-    local shmem_file="/dev/shm/looking-glass"
-    if [ ! -e "$shmem_file" ]; then
-        echo "[+] Creating shared memory file..."
-        sudo touch "$shmem_file"
-        sudo chown $USER:qemu "$shmem_file"
-        sudo chmod 660 "$shmem_file"
+    if [ ! -f "$VFIO_CONFIG_FILE" ]; then
+        echo -e "${RED}[错误] 找不到VFIO设备配置文件${NC}"
+        echo "请先运行 setup_vfio.sh 配置GPU直通"
+        exit 1
     fi
     
-    # Check if Looking Glass client is installed
-    if command -v looking-glass-client &> /dev/null; then
-        echo "[i] Looking Glass client is installed, will auto-start after VM launch"
+    # 读取配置文件中的第一个设备 - 修复格式问题
+    GPU_ID=$(grep -m 1 "\".*\"" "$VFIO_CONFIG_FILE" | grep -o '"[^"]*"' | head -1 | tr -d '"')
+    
+    if [ -z "$GPU_ID" ]; then
+        echo -e "${RED}[错误] 无法从配置文件中读取GPU ID${NC}"
+        # 尝试使用默认值
+        GPU_ID="10de2820"
+        echo -e "${YELLOW}[!] 尝试使用默认值: $GPU_ID${NC}"
+    fi
+    
+    # 将十六进制ID转换为可搜索格式
+    FORMATTED_GPU_ID=$(echo "$GPU_ID" | sed 's/\(..\)\(..\)/\1:\2/')
+    
+    # 直接查找对应的NVIDIA显卡
+    GPU_INFO=$(lspci -nn | grep "NVIDIA" | grep "VGA")
+    GPU_ADDR=$(echo "$GPU_INFO" | head -1 | awk '{print $1}')
+    
+    if [ -z "$GPU_ADDR" ]; then
+        echo -e "${YELLOW}[!] 未找到NVIDIA显卡，尝试查找任何显卡...${NC}"
+        # 尝试查找任何显卡
+        GPU_INFO=$(lspci -nn | grep -i "VGA")
+        GPU_ADDR=$(echo "$GPU_INFO" | grep -v "Intel" | head -1 | awk '{print $1}')
+        
+        if [ -z "$GPU_ADDR" ]; then
+            echo -e "${RED}[错误] 无法找到任何可用的显卡${NC}"
+            echo -e "${YELLOW}[!] 使用默认地址 01:00.0${NC}"
+            GPU_ADDR="01:00.0"
+        fi
+    fi
+    
+    echo -e "${GREEN}[✓] 找到GPU地址: $GPU_ADDR${NC}"
+    
+    # 改进GPU驱动检查，增强容错性
+    GPU_STATUS=$(lspci -nnk -s "$GPU_ADDR" | grep -A2 "Kernel driver")
+    echo -e "${BLUE}[+] GPU当前状态:${NC}"
+    echo "$GPU_STATUS"
+    
+    # 检查GPU驱动是否为vfio-pci
+    if echo "$GPU_STATUS" | grep -q "vfio-pci"; then
+        echo -e "${GREEN}[✓] GPU已绑定到vfio-pci驱动，可以直通给VM${NC}"
+        return 0
+    fi
+    
+    echo -e "${YELLOW}[!] GPU未绑定到vfio-pci驱动${NC}"
+    echo -e "${YELLOW}[!] 将尝试绑定GPU到vfio-pci...${NC}"
+    
+    # 调用GPU切换脚本
+    sudo "$SCRIPT_DIR/switch_gpu.sh" vfio
+    
+    # 再次检查
+    sleep 2
+    GPU_STATUS=$(lspci -nnk -s "$GPU_ADDR" | grep -A2 "Kernel driver")
+    
+    if echo "$GPU_STATUS" | grep -q "vfio-pci"; then
+        echo -e "${GREEN}[✓] GPU已成功绑定到vfio-pci驱动${NC}"
         return 0
     else
-        echo "[WARNING] Looking Glass client not found"
-        echo "[i] Consider running looking_glass_setup.sh to install the client"
-        return 1
-    fi
-}
-
-# Start VM
-start_vm() {
-    local vm_name="$1"
-    local use_hugepages="$2"
-    local cmd_args=""
-    
-    echo "[+] Preparing to start VM '$vm_name'..."
-    
-    # If HugePages enabled, add related parameters
-    if [ "$use_hugepages" -eq 1 ]; then
-        local available_hugepages=$(setup_hugepages)
-        if [ "$available_hugepages" -gt 0 ]; then
-            echo "[i] Starting VM with HugePages"
-            cmd_args="--memorybacking hugepages=on"
-        else
-            echo "[WARNING] No HugePages available, using standard memory"
-        fi
-    fi
-    
-    # Start VM
-    echo "[+] Starting VM..."
-    virsh -c qemu:///system start "$vm_name" $cmd_args
-    
-    # Check if VM started successfully - improved detection logic
-    echo "[i] Verifying VM startup..."
-    # First quick check
-    sleep 5
-    if ! virsh list --name | grep -q "^$vm_name$"; then
-        echo "[WARNING] VM not detected in initial check, waiting longer..."
-        # Give more time for VM with GPU passthrough to initialize
-        for i in {1..15}; do
-            echo -n "."
-            sleep 2
-            if virsh list --name | grep -q "^$vm_name$"; then
-                echo -e "\n[✓] VM detected after extended wait"
-                break
-            fi
-        done
-    fi
-    
-    # Final check if VM is running
-    if virsh list --name | grep -q "^$vm_name$"; then
-        echo "[✓] VM started successfully"
-        # Show VM information
-        echo "[i] VM details:"
-        virsh dominfo "$vm_name" | grep -E "State|CPU|Memory"
-    else
-        echo "[ERROR] VM failed to start"
-        echo "[i] Checking for potential issues..."
-        # Check if vfio-pci driver is used for the GPU
-        if lspci -k | grep -A 3 NVIDIA | grep -q "vfio-pci"; then
-            echo "[i] GPU seems properly bound to vfio-pci"
-        else
-            echo "[WARNING] GPU might not be properly bound to vfio-pci"
-            echo "[i] Try running: sudo ./gpu-manager.sh status"
-        fi
-        # Check for common errors in logs
-        echo "[i] Last few lines from libvirt log:"
-        sudo tail -n 5 /var/log/libvirt/qemu/"$vm_name".log 2>/dev/null || echo "No log file found"
+        echo -e "${RED}[错误] 无法将GPU绑定到vfio-pci驱动${NC}"
+        echo "请手动运行 '$SCRIPT_DIR/gpu-manager.sh' 切换GPU到VM模式"
         exit 1
     fi
-    
-    # If Looking Glass is enabled, start client
-    if [ "$LOOKING_GLASS" -eq 1 ] && command -v looking-glass-client &> /dev/null; then
-        # Wait for VM to fully initialize
-        echo "[i] Waiting for VM initialization..."
-        sleep 5
+}
+
+# 配置共享内存
+check_shared_memory() {
+    if [ "$LOOKING_GLASS" = true ]; then
+        echo -e "${BLUE}[+] 检查Looking Glass共享内存...${NC}"
         
-        # Start Looking Glass client
-        echo "[+] Starting Looking Glass client..."
-        looking-glass-client -a -F input:grabKeyboardOnFocus &
-        echo "[i] Looking Glass client started"
+        if [ ! -e /dev/shm/looking-glass ]; then
+            echo -e "${YELLOW}[!] Looking Glass共享内存文件不存在，正在创建...${NC}"
+            sudo touch /dev/shm/looking-glass
+            sudo chown $USER:qemu /dev/shm/looking-glass
+            sudo chmod 0660 /dev/shm/looking-glass
+            
+            # 为SELinux设置正确的上下文
+            if command -v semanage &> /dev/null; then
+                sudo semanage fcontext -a -t svirt_tmpfs_t /dev/shm/looking-glass
+                sudo restorecon -v /dev/shm/looking-glass
+            fi
+        elif [ ! -w /dev/shm/looking-glass ]; then
+            echo -e "${YELLOW}[!] Looking Glass共享内存文件权限错误，正在修复...${NC}"
+            sudo chown $USER:qemu /dev/shm/looking-glass
+            sudo chmod 0660 /dev/shm/looking-glass
+        fi
+        
+        echo -e "${GREEN}[✓] Looking Glass共享内存检查完成${NC}"
     fi
+    
+    return 0
 }
 
-# Main function
+# 配置大页内存以提高性能
+setup_hugepages() {
+    echo -e "${BLUE}[+] 配置大页内存...${NC}"
+    
+    # 获取虚拟机内存大小（KB）
+    VM_MEMORY_KB=$(virsh dominfo "$VM_NAME" | grep "Max memory" | awk '{print $3}')
+    
+    if [ -z "$VM_MEMORY_KB" ]; then
+        echo -e "${YELLOW}[!] 无法获取虚拟机内存大小，使用默认值${NC}"
+        VM_MEMORY_KB=8388608  # 8GB 默认值
+    fi
+    
+    # 转换为MB并增加一些余量
+    VM_MEMORY_MB=$((VM_MEMORY_KB / 1024 + 512))
+    
+    # 计算需要的大页数量（2MB页面大小）
+    HUGEPAGES_NEEDED=$((VM_MEMORY_MB / 2))
+    
+    echo -e "${BLUE}[+] 虚拟机内存: ${VM_MEMORY_MB}MB, 需要${HUGEPAGES_NEEDED}个大页${NC}"
+    
+    # 配置大页
+    echo $HUGEPAGES_NEEDED | sudo tee /proc/sys/vm/nr_hugepages > /dev/null
+    
+    # 检查是否成功
+    HUGEPAGES_ALLOCATED=$(cat /proc/sys/vm/nr_hugepages)
+    
+    if [ "$HUGEPAGES_ALLOCATED" -lt "$HUGEPAGES_NEEDED" ]; then
+        echo -e "${YELLOW}[!] 无法分配足够的大页内存 (分配: $HUGEPAGES_ALLOCATED, 需要: $HUGEPAGES_NEEDED)${NC}"
+        echo -e "${YELLOW}[!] 继续使用普通内存...${NC}"
+        return 1
+    fi
+    
+    echo -e "${GREEN}[✓] 大页内存配置完成: $HUGEPAGES_ALLOCATED 页${NC}"
+    return 0
+}
+
+# 启动虚拟机
+start_vm() {
+    echo -e "${BLUE}[+] 启动虚拟机 $VM_NAME...${NC}"
+    
+    # 配置大页内存，但不添加额外参数（virsh start不支持这些参数）
+    setup_hugepages
+    
+    # 先尝试常规启动方式
+    virsh start "$VM_NAME"
+    START_RESULT=$?
+    
+    # 如果常规启动失败，尝试使用特殊选项（绕过网络问题）
+    if [ $START_RESULT -ne 0 ]; then
+        echo -e "${YELLOW}[!] 使用标准方式启动失败，尝试替代方法...${NC}"
+        
+        # 使用 qemu:///system 连接并指定用户模式网络
+        echo -e "${BLUE}[+] 尝试使用用户模式网络启动...${NC}"
+        virsh --connect qemu:///system define /home/ydzat/workspace/AntiCheatVM/vms/AntiCheatVM_fixed.xml
+        virsh --connect qemu:///system start "$VM_NAME"
+        START_RESULT=$?
+        
+        if [ $START_RESULT -ne 0 ]; then
+            echo -e "${RED}[错误] 无法启动虚拟机${NC}"
+            exit 1
+        fi
+    fi
+    
+    echo -e "${GREEN}[✓] 虚拟机启动成功${NC}"
+    
+    # 启动Looking Glass（如果需要）
+    if [ "$LOOKING_GLASS" = true ]; then
+        echo -e "${BLUE}[+] 启动Looking Glass客户端...${NC}"
+        echo -e "${YELLOW}[!] 等待10秒让VM启动...${NC}"
+        sleep 10
+        
+        # 检查Looking Glass命令是否可用
+        if command -v looking-glass-client &> /dev/null; then
+            # 在后台启动Looking Glass
+            looking-glass-client -s -m 97 &
+            echo -e "${GREEN}[✓] Looking Glass客户端已启动${NC}"
+        else
+            echo -e "${RED}[错误] Looking Glass客户端未安装${NC}"
+            echo "请运行 looking_glass_setup.sh 安装Looking Glass"
+        fi
+    fi
+    
+    return 0
+}
+
+# 主函数
 main() {
-    echo "======================================================"
-    echo " AntiCheatVM - Virtual Machine Launcher"
-    echo "======================================================"
+    check_vm_exists
+    check_gpu_status
+    check_shared_memory
+    start_vm
     
-    # Parse command line arguments
-    parse_args "$@"
+    echo ""
+    echo -e "${GREEN}[✓] 虚拟机启动流程完成!${NC}"
+    echo ""
+    echo -e "${YELLOW}[i] 提示:${NC}"
+    echo "1. 使用 '$SCRIPT_DIR/stop_vm.sh' 停止虚拟机"
+    echo "2. 使用 'virsh console $VM_NAME' 连接到VM控制台（如果需要）"
     
-    # Check if VM exists
-    check_vm_exists "$VM_NAME"
-    
-    # Check if VM is already running
-    check_vm_running "$VM_NAME"
-    
-    # If Looking Glass enabled, check and setup
-    if [ "$LOOKING_GLASS" -eq 1 ]; then
-        start_looking_glass
+    if [ "$LOOKING_GLASS" = true ]; then
+        echo "3. 右Ctrl键可切换键盘和鼠标捕获"
     fi
-    
-    # Start VM
-    start_vm "$VM_NAME" "$USE_HUGEPAGES"
-    
-    echo "======================================================"
-    echo "[AntiCheatVM] VM startup complete"
-    echo ""
-    echo "If using Looking Glass: "
-    echo "- Alt+Tab can switch between host and VM"
-    echo "- Pause key can grab/release mouse and keyboard"
-    echo ""
-    echo "To stop the VM, use the stop_vm.sh script"
-    echo "======================================================"
 }
 
-# Execute main function
-main "$@"
+# 执行主函数
+main

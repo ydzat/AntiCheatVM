@@ -1,0 +1,22 @@
+[1m=====================================================[0m
+[1m AntiCheatVM - 虚拟机启动工具[0m
+[1m=====================================================[0m
+[0;34m[+] 检查GPU状态...[0m
+[0;32m[✓] GPU已绑定至vfio-pci驱动，可用于VM直通[0m
+[0;34m[+] 检查Looking Glass共享内存...[0m
+[0;34m[+] 设置SELinux上下文...[0m
+[0;32m[✓] Looking Glass客户端已安装，将在虚拟机启动后自动启动[0m
+[0;34m[+] 准备启动虚拟机 'AntiCheatVM'...[0m
+[0;34m[+] 启动虚拟机...[0m
+[0;31m[错误] 启动虚拟机失败: error: Domain is already active[0m
+[0;34m[i] 验证虚拟机启动状态...[0m
+[0;33m[警告] 初始检查未检测到虚拟机，等待更久...[0m
+...............[0;31m[错误] 虚拟机启动失败[0m
+[0;34m[i] 检查潜在问题...[0m
+[0;34m[i] GPU似乎已正确绑定至vfio-pci[0m
+[0;34m[i] libvirt日志最后几行:[0m
+-device '{"driver":"usb-redir","chardev":"charredir1","id":"redir1","bus":"usb.0","port":"3"}' \
+-device '{"driver":"virtio-balloon-pci","id":"balloon0","bus":"pci.4","addr":"0x0"}' \
+-sandbox on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny \
+-msg timestamp=on
+char device redirected to /dev/pts/2 (label charserial0)

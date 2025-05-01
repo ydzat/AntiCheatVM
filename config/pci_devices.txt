@@ -1,87 +1,321 @@
 00:00.0 Host bridge [0600]: Intel Corporation Device [8086:4649] (rev 02)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
-00:01.0 PCI bridge [0604]: Intel Corporation 12th Gen Core Processor PCI Express x16 Controller #1 [8086:460d] (rev 02)
+	Flags: bus master, fast devsel, latency 0, IOMMU group 1
+	Capabilities: [e0] Vendor Specific Information: Len=14 <?>
+
+00:01.0 PCI bridge [0604]: Intel Corporation 12th Gen Core Processor PCI Express x16 Controller #1 [8086:460d] (rev 02) (prog-if 00 [Normal decode])
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 122, IOMMU group 2
+	Bus: primary=00, secondary=01, subordinate=01, sec-latency=0
+	I/O behind bridge: 4000-4fff [size=4K] [16-bit]
+	Memory behind bridge: 75000000-760fffff [size=17M] [32-bit]
+	Prefetchable memory behind bridge: 6000000000-6201ffffff [size=8224M] [32-bit]
+	Capabilities: [40] Express Root Port (Slot+), IntMsgNum 0
+	Capabilities: [80] MSI: Enable+ Count=1/1 Maskable- 64bit+
+	Capabilities: [98] Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Capabilities: [a0] Power Management version 3
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [220] Access Control Services
+	Capabilities: [150] Precision Time Measurement
+	Capabilities: [a30] Secondary PCI Express
+	Capabilities: [a90] Data Link Feature <?>
+	Capabilities: [a9c] Physical Layer 16.0 GT/s <?>
+	Capabilities: [edc] Lane Margining at the Receiver
+	Capabilities: [adc] Physical Layer 32.0 GT/s <?>
 	Kernel driver in use: pcieport
-00:02.0 VGA compatible controller [0300]: Intel Corporation Alder Lake-P GT1 [UHD Graphics] [8086:46a3] (rev 0c)
+
+00:02.0 VGA compatible controller [0300]: Intel Corporation Alder Lake-P GT1 [UHD Graphics] [8086:46a3] (rev 0c) (prog-if 00 [VGA controller])
 	DeviceName: Onboard - Video
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 162, IOMMU group 0
+	Memory at 6202000000 (64-bit, non-prefetchable) [size=16M]
+	Memory at 4000000000 (64-bit, prefetchable) [size=256M]
+	I/O ports at 5000 [size=64]
+	Expansion ROM at 000c0000 [virtual] [disabled] [size=128K]
+	Capabilities: [40] Vendor Specific Information: Len=0c <?>
+	Capabilities: [70] Express Root Complex Integrated Endpoint, IntMsgNum 0
+	Capabilities: [ac] MSI: Enable+ Count=1/1 Maskable+ 64bit-
+	Capabilities: [d0] Power Management version 2
+	Capabilities: [100] Process Address Space ID (PASID)
+	Capabilities: [200] Address Translation Service (ATS)
+	Capabilities: [300] Page Request Interface (PRI)
+	Capabilities: [320] Single Root I/O Virtualization (SR-IOV)
 	Kernel driver in use: i915
 	Kernel modules: i915, xe
+
 00:04.0 Signal processing controller [1180]: Intel Corporation Alder Lake Innovation Platform Framework Processor Participant [8086:461d] (rev 02)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 16, IOMMU group 3
+	Memory at 6203100000 (64-bit, non-prefetchable) [size=128K]
+	Capabilities: [90] MSI: Enable- Count=1/1 Maskable- 64bit-
+	Capabilities: [d0] Power Management version 3
+	Capabilities: [e0] Vendor Specific Information: Len=0c <?>
 	Kernel driver in use: proc_thermal_pci
 	Kernel modules: processor_thermal_device_pci
-00:06.0 PCI bridge [0604]: Intel Corporation 12th Gen Core Processor PCI Express x4 Controller #0 [8086:464d] (rev 02)
+
+00:06.0 PCI bridge [0604]: Intel Corporation 12th Gen Core Processor PCI Express x4 Controller #0 [8086:464d] (rev 02) (prog-if 00 [Normal decode])
+	Flags: bus master, fast devsel, latency 0, IRQ 123, IOMMU group 4
+	Bus: primary=00, secondary=02, subordinate=02, sec-latency=0
+	I/O behind bridge: [disabled] [16-bit]
+	Memory behind bridge: 76400000-764fffff [size=1M] [32-bit]
+	Prefetchable memory behind bridge: [disabled] [64-bit]
+	Capabilities: [40] Express Root Port (Slot+), IntMsgNum 0
+	Capabilities: [80] MSI: Enable+ Count=1/1 Maskable- 64bit-
+	Capabilities: [90] Subsystem: Device [0000:0000]
+	Capabilities: [a0] Power Management version 3
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [220] Access Control Services
+	Capabilities: [200] L1 PM Substates
+	Capabilities: [150] Precision Time Measurement
+	Capabilities: [280] Virtual Channel
+	Capabilities: [a30] Secondary PCI Express
+	Capabilities: [a90] Data Link Feature <?>
+	Capabilities: [a9c] Physical Layer 16.0 GT/s <?>
+	Capabilities: [edc] Lane Margining at the Receiver
 	Kernel driver in use: pcieport
-00:06.2 PCI bridge [0604]: Intel Corporation 12th Gen Core Processor PCI Express x4 Controller #2 [8086:463d] (rev 02)
+
+00:06.2 PCI bridge [0604]: Intel Corporation 12th Gen Core Processor PCI Express x4 Controller #2 [8086:463d] (rev 02) (prog-if 00 [Normal decode])
+	Flags: bus master, fast devsel, latency 0, IRQ 124, IOMMU group 5
+	Bus: primary=00, secondary=03, subordinate=03, sec-latency=0
+	I/O behind bridge: [disabled] [16-bit]
+	Memory behind bridge: 76300000-763fffff [size=1M] [32-bit]
+	Prefetchable memory behind bridge: [disabled] [64-bit]
+	Capabilities: [40] Express Root Port (Slot+), IntMsgNum 0
+	Capabilities: [80] MSI: Enable+ Count=1/1 Maskable- 64bit-
+	Capabilities: [90] Subsystem: Device [0000:0000]
+	Capabilities: [a0] Power Management version 3
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [220] Access Control Services
+	Capabilities: [200] L1 PM Substates
+	Capabilities: [150] Precision Time Measurement
+	Capabilities: [280] Virtual Channel
+	Capabilities: [a30] Secondary PCI Express
+	Capabilities: [a90] Data Link Feature <?>
+	Capabilities: [a9c] Physical Layer 16.0 GT/s <?>
+	Capabilities: [edc] Lane Margining at the Receiver
 	Kernel driver in use: pcieport
+
 00:08.0 System peripheral [0880]: Intel Corporation 12th Gen Core Processor Gaussian & Neural Accelerator [8086:464f] (rev 02)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
-00:14.0 USB controller [0c03]: Intel Corporation Alder Lake PCH USB 3.2 xHCI Host Controller [8086:51ed] (rev 01)
+	Flags: fast devsel, IRQ 255, IOMMU group 6
+	Memory at 6203140000 (64-bit, non-prefetchable) [disabled] [size=4K]
+	Capabilities: [90] MSI: Enable- Count=1/1 Maskable- 64bit-
+	Capabilities: [a0] Vendor Specific Information: Len=14 <?>
+	Capabilities: [dc] Power Management version 2
+	Capabilities: [f0] PCI Advanced Features
+
+00:14.0 USB controller [0c03]: Intel Corporation Alder Lake PCH USB 3.2 xHCI Host Controller [8086:51ed] (rev 01) (prog-if 30 [XHCI])
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, medium devsel, latency 0, IRQ 127, IOMMU group 7
+	Memory at 6203120000 (64-bit, non-prefetchable) [size=64K]
+	Capabilities: [70] Power Management version 2
+	Capabilities: [80] MSI: Enable+ Count=8/8 Maskable- 64bit+
+	Capabilities: [90] Vendor Specific Information: Len=14 <?>
+	Capabilities: [b0] Vendor Specific Information: Len=00 <?>
 	Kernel driver in use: xhci_hcd
+
 00:14.2 RAM memory [0500]: Intel Corporation Alder Lake PCH Shared SRAM [8086:51ef] (rev 01)
 	DeviceName: Onboard - Other
+	Flags: fast devsel, IOMMU group 7
+	Memory at 6203138000 (64-bit, non-prefetchable) [disabled] [size=16K]
+	Memory at 620313f000 (64-bit, non-prefetchable) [disabled] [size=4K]
+	Capabilities: [80] Power Management version 3
+
 00:14.3 Network controller [0280]: Intel Corporation Alder Lake-P PCH CNVi WiFi [8086:51f0] (rev 01)
 	DeviceName: Onboard - Ethernet
 	Subsystem: Intel Corporation Dual Band Wi-Fi 6(802.11ax) AX201 160MHz 2x2 [Harrison Peak] [8086:0074]
+	Flags: bus master, fast devsel, latency 0, IRQ 16, IOMMU group 8
+	Memory at 6203134000 (64-bit, non-prefetchable) [size=16K]
+	Capabilities: [c8] Power Management version 3
+	Capabilities: [d0] MSI: Enable- Count=1/1 Maskable- 64bit+
+	Capabilities: [40] Express Root Complex Integrated Endpoint, IntMsgNum 0
+	Capabilities: [80] MSI-X: Enable+ Count=16 Masked-
+	Capabilities: [100] Latency Tolerance Reporting
+	Capabilities: [164] Vendor Specific Information: ID=0010 Rev=0 Len=014 <?>
 	Kernel driver in use: iwlwifi
 	Kernel modules: iwlwifi
+
 00:15.0 Serial bus controller [0c80]: Intel Corporation Alder Lake PCH Serial IO I2C Controller #0 [8086:51e8] (rev 01)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 27, IOMMU group 9
+	Memory at 4017000000 (64-bit, non-prefetchable) [size=4K]
+	Capabilities: [80] Power Management version 3
+	Capabilities: [90] Vendor Specific Information: Len=14 <?>
 	Kernel driver in use: intel-lpss
+
 00:16.0 Communication controller [0780]: Intel Corporation Alder Lake PCH HECI Controller [8086:51e0] (rev 01)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 164, IOMMU group 10
+	Memory at 620313d000 (64-bit, non-prefetchable) [size=4K]
+	Capabilities: [50] Power Management version 3
+	Capabilities: [8c] MSI: Enable+ Count=1/1 Maskable- 64bit+
+	Capabilities: [a4] Vendor Specific Information: Len=14 <?>
 	Kernel driver in use: mei_me
 	Kernel modules: mei_me
-00:1c.0 PCI bridge [0604]: Intel Corporation Device [8086:51b8] (rev 01)
+
+00:1c.0 PCI bridge [0604]: Intel Corporation Device [8086:51b8] (rev 01) (prog-if 00 [Normal decode])
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 125, IOMMU group 11
+	Bus: primary=00, secondary=04, subordinate=04, sec-latency=0
+	I/O behind bridge: [disabled] [16-bit]
+	Memory behind bridge: [disabled] [32-bit]
+	Prefetchable memory behind bridge: [disabled] [64-bit]
+	Capabilities: [40] Express Root Port (Slot-), IntMsgNum 0
+	Capabilities: [80] MSI: Enable+ Count=1/1 Maskable- 64bit-
+	Capabilities: [90] Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Capabilities: [a0] Power Management version 3
 	Kernel driver in use: pcieport
-00:1c.5 PCI bridge [0604]: Intel Corporation Alder Lake-P PCH PCIe Root Port #6 [8086:51bd] (rev 01)
+
+00:1c.5 PCI bridge [0604]: Intel Corporation Alder Lake-P PCH PCIe Root Port #6 [8086:51bd] (rev 01) (prog-if 00 [Normal decode])
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 126, IOMMU group 12
+	Bus: primary=00, secondary=05, subordinate=05, sec-latency=0
+	I/O behind bridge: 3000-3fff [size=4K] [16-bit]
+	Memory behind bridge: 76200000-762fffff [size=1M] [32-bit]
+	Prefetchable memory behind bridge: [disabled] [64-bit]
+	Capabilities: [40] Express Root Port (Slot+), IntMsgNum 0
+	Capabilities: [80] MSI: Enable+ Count=1/1 Maskable- 64bit-
+	Capabilities: [90] Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Capabilities: [a0] Power Management version 3
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [220] Access Control Services
+	Capabilities: [150] Precision Time Measurement
+	Capabilities: [200] L1 PM Substates
+	Capabilities: [a30] Secondary PCI Express
 	Kernel driver in use: pcieport
+
 00:1f.0 ISA bridge [0601]: Intel Corporation Alder Lake PCH eSPI Controller [8086:5182] (rev 01)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IOMMU group 13
+
 00:1f.3 Multimedia audio controller [0401]: Intel Corporation Alder Lake PCH-P High Definition Audio Controller [8086:51c8] (rev 01)
 	DeviceName: Onboard - Sound
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13eb]
+	Flags: bus master, fast devsel, latency 32, IRQ 182, IOMMU group 13
+	Memory at 6203130000 (64-bit, non-prefetchable) [size=16K]
+	Memory at 6203000000 (64-bit, non-prefetchable) [size=1M]
+	Capabilities: [50] Power Management version 3
+	Capabilities: [80] Vendor Specific Information: Len=14 <?>
+	Capabilities: [60] MSI: Enable+ Count=1/1 Maskable- 64bit+
 	Kernel driver in use: sof-audio-pci-intel-tgl
 	Kernel modules: snd_hda_intel, snd_soc_avs, snd_sof_pci_intel_tgl
+
 00:1f.4 SMBus [0c05]: Intel Corporation Alder Lake PCH-P SMBus Host Controller [8086:51a3] (rev 01)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: medium devsel, IRQ 16, IOMMU group 13
+	Memory at 620313c000 (64-bit, non-prefetchable) [size=256]
+	I/O ports at efa0 [size=32]
 	Kernel driver in use: i801_smbus
 	Kernel modules: i2c_i801
+
 00:1f.5 Serial bus controller [0c80]: Intel Corporation Alder Lake-P PCH SPI Controller [8086:51a4] (rev 01)
 	DeviceName: Onboard - Other
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: fast devsel, IOMMU group 13
+	Memory at 74400000 (32-bit, non-prefetchable) [size=4K]
 	Kernel driver in use: intel-spi
 	Kernel modules: spi_intel_pci
-01:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD106M [GeForce RTX 4070 Max-Q / Mobile] [10de:2820] (rev a1)
+
+01:00.0 VGA compatible controller [0300]: NVIDIA Corporation AD106M [GeForce RTX 4070 Max-Q / Mobile] [10de:2820] (rev a1) (prog-if 00 [VGA controller])
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
-	Kernel driver in use: nvidia
+	Flags: fast devsel, IRQ 16, IOMMU group 14
+	Memory at 75000000 (32-bit, non-prefetchable) [size=16M]
+	Memory at 6000000000 (64-bit, prefetchable) [size=8G]
+	Memory at 6200000000 (64-bit, prefetchable) [size=32M]
+	I/O ports at 4000 [size=128]
+	Expansion ROM at 76000000 [disabled] [size=512K]
+	Capabilities: [60] Power Management version 3
+	Capabilities: [68] MSI: Enable- Count=1/1 Maskable- 64bit+
+	Capabilities: [78] Express Legacy Endpoint, IntMsgNum 0
+	Capabilities: [b4] Vendor Specific Information: Len=14 <?>
+	Capabilities: [100] Virtual Channel
+	Capabilities: [250] Latency Tolerance Reporting
+	Capabilities: [258] L1 PM Substates
+	Capabilities: [128] Power Budgeting <?>
+	Capabilities: [420] Advanced Error Reporting
+	Capabilities: [600] Vendor Specific Information: ID=0001 Rev=1 Len=024 <?>
+	Capabilities: [900] Secondary PCI Express
+	Capabilities: [bb0] Physical Resizable BAR
+	Capabilities: [c1c] Physical Layer 16.0 GT/s <?>
+	Capabilities: [d00] Lane Margining at the Receiver
+	Capabilities: [e00] Data Link Feature <?>
+	Kernel driver in use: vfio-pci
 	Kernel modules: nouveau, nvidia_drm, nvidia
+
 01:00.1 Audio device [0403]: NVIDIA Corporation AD106M High Definition Audio Controller [10de:22bd] (rev a1)
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
-	Kernel driver in use: snd_hda_intel
+	Flags: fast devsel, IRQ 255, IOMMU group 14
+	Memory at 76080000 (32-bit, non-prefetchable) [disabled] [size=16K]
+	Capabilities: [60] Power Management version 3
+	Capabilities: [68] MSI: Enable- Count=1/1 Maskable- 64bit+
+	Capabilities: [78] Express Endpoint, IntMsgNum 0
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [160] Data Link Feature <?>
+	Kernel driver in use: vfio-pci
 	Kernel modules: snd_hda_intel
-02:00.0 Non-Volatile memory controller [0108]: Micron Technology Inc 2400 NVMe SSD (DRAM-less) [1344:5413] (rev 03)
+
+02:00.0 Non-Volatile memory controller [0108]: Micron Technology Inc 2400 NVMe SSD (DRAM-less) [1344:5413] (rev 03) (prog-if 02 [NVM Express])
 	Subsystem: Micron Technology Inc Device [1344:1100]
+	Flags: bus master, fast devsel, latency 0, IRQ 16, IOMMU group 15
+	Memory at 76400000 (64-bit, non-prefetchable) [size=16K]
+	Capabilities: [40] Power Management version 3
+	Capabilities: [50] MSI: Enable- Count=1/8 Maskable+ 64bit+
+	Capabilities: [70] Express Endpoint, IntMsgNum 0
+	Capabilities: [b0] MSI-X: Enable+ Count=17 Masked-
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [148] Power Budgeting <?>
+	Capabilities: [158] Alternative Routing-ID Interpretation (ARI)
+	Capabilities: [168] Secondary PCI Express
+	Capabilities: [188] Physical Layer 16.0 GT/s <?>
+	Capabilities: [1ac] Lane Margining at the Receiver
+	Capabilities: [204] Latency Tolerance Reporting
+	Capabilities: [20c] L1 PM Substates
+	Capabilities: [390] Data Link Feature <?>
 	Kernel driver in use: nvme
 	Kernel modules: nvme
-03:00.0 Non-Volatile memory controller [0108]: Micron/Crucial Technology P2 [Nick P2] / P3 / P3 Plus NVMe PCIe SSD (DRAM-less) [c0a9:540a] (rev 01)
+
+03:00.0 Non-Volatile memory controller [0108]: Micron/Crucial Technology P2 [Nick P2] / P3 / P3 Plus NVMe PCIe SSD (DRAM-less) [c0a9:540a] (rev 01) (prog-if 02 [NVM Express])
 	Subsystem: Micron/Crucial Technology Device [c0a9:5021]
+	Flags: bus master, fast devsel, latency 0, IRQ 16, IOMMU group 16
+	Memory at 76300000 (64-bit, non-prefetchable) [size=16K]
+	Capabilities: [80] Express Endpoint, IntMsgNum 0
+	Capabilities: [d0] MSI-X: Enable+ Count=9 Masked-
+	Capabilities: [e0] MSI: Enable- Count=1/8 Maskable+ 64bit+
+	Capabilities: [f8] Power Management version 3
+	Capabilities: [100] Latency Tolerance Reporting
+	Capabilities: [110] L1 PM Substates
+	Capabilities: [128] Alternative Routing-ID Interpretation (ARI)
+	Capabilities: [1e0] Data Link Feature <?>
+	Capabilities: [200] Advanced Error Reporting
+	Capabilities: [300] Secondary PCI Express
+	Capabilities: [340] Physical Layer 16.0 GT/s <?>
+	Capabilities: [378] Lane Margining at the Receiver
 	Kernel driver in use: nvme
 	Kernel modules: nvme
+
 05:00.0 Ethernet controller [0200]: Realtek Semiconductor Co., Ltd. RTL8111/8168/8211/8411 PCI Express Gigabit Ethernet Controller [10ec:8168] (rev 15)
 	Subsystem: Micro-Star International Co., Ltd. [MSI] Device [1462:13c7]
+	Flags: bus master, fast devsel, latency 0, IRQ 17, IOMMU group 17
+	I/O ports at 3000 [size=256]
+	Memory at 76204000 (64-bit, non-prefetchable) [size=4K]
+	Memory at 76200000 (64-bit, non-prefetchable) [size=16K]
+	Capabilities: [40] Power Management version 3
+	Capabilities: [50] MSI: Enable- Count=1/1 Maskable- 64bit+
+	Capabilities: [70] Express Endpoint, IntMsgNum 1
+	Capabilities: [b0] MSI-X: Enable+ Count=4 Masked-
+	Capabilities: [100] Advanced Error Reporting
+	Capabilities: [140] Virtual Channel
+	Capabilities: [160] Device Serial Number 01-00-00-00-68-4c-e0-00
+	Capabilities: [170] Latency Tolerance Reporting
+	Capabilities: [178] L1 PM Substates
 	Kernel driver in use: r8169
 	Kernel modules: r8169
+
