@@ -15,18 +15,51 @@ if [ "$(id -u)" -ne 0 ]; then
     exit 1
 fi
 
+# 获取实际GPU地址
+get_gpu_address() {
+    # 尝试查找NVIDIA GPU
+    gpu_info=$(lspci -nn | grep -i "NVIDIA" | grep -i "VGA" | head -1)
+    if [ -z "$gpu_info" ]; then
+        # 如果找不到NVIDIA GPU，尝试找任何显卡
+        gpu_info=$(lspci -nn | grep -i "VGA" | grep -v "Intel" | head -1)
+    fi
+    
+    if [ -n "$gpu_info" ]; then
+        gpu_addr=$(echo "$gpu_info" | awk '{print $1}')
+        echo "$gpu_addr"
+    else
+        # 默认值
+        echo "01:00.0"
+    fi
+}
+
+# 获取GPU地址
+GPU_ADDRESS=$(get_gpu_address)
+
+# 将PCI地址转换为libvirt格式
+# 例如: 01:00.0 -> pci_0000_01_00_0
+convert_to_libvirt_format() {
+    local addr=$1
+    # 替换冒号和点为下划线
+    local formatted_addr=$(echo "$addr" | sed 's/[:.]/_/g')
+    echo "pci_0000_${formatted_addr}"
+}
+
 # 显示当前状态
 show_status() {
     echo -e "${BLUE}[+] 检查GPU状态...${NC}"
     
-    if lspci -nnk | grep -A 2 "01:00.0" | grep -q "Kernel driver in use: vfio-pci"; then
+    if lspci -nnk | grep -A 2 "$GPU_ADDRESS" | grep -q "Kernel driver in use: vfio-pci"; then
         echo -e "${YELLOW}[!] GPU当前由VFIO-PCI驱动控制（适用于VM）${NC}"
         return 0  # 0 = VFIO模式
-    elif lspci -nnk | grep -A 2 "01:00.0" | grep -q "Kernel driver in use: nvidia"; then
+    elif lspci -nnk | grep -A 2 "$GPU_ADDRESS" | grep -q "Kernel driver in use: nvidia"; then
         echo -e "${GREEN}[✓] GPU当前由NVIDIA驱动控制（适用于宿主机）${NC}"
         return 1  # 1 = NVIDIA模式
     else
         echo -e "${RED}[错误] 无法确定当前GPU状态${NC}"
+        echo -e "${YELLOW}[!] GPU地址: $GPU_ADDRESS${NC}"
+        echo -e "${YELLOW}[!] 驱动信息:${NC}"
+        lspci -nnk | grep -A 5 "$GPU_ADDRESS"
         exit 1
     fi
 }
@@ -35,8 +68,12 @@ show_status() {
 enable_nvidia() {
     echo -e "${BLUE}[+] 启用NVIDIA驱动...${NC}"
     
+    # 转换PCI地址为libvirt格式
+    local libvirt_dev=$(convert_to_libvirt_format "$GPU_ADDRESS")
+    
     echo -e "${BLUE}[1/3] 将GPU重新附加到主机...${NC}"
-    virsh nodedev-reattach pci_0000_01_00.0 || return 1
+    echo -e "${YELLOW}[!] 使用设备名称: $libvirt_dev${NC}"
+    virsh nodedev-reattach "$libvirt_dev" || return 1
     echo -e "${GREEN}[✓] GPU已重新附加${NC}"
     
     echo -e "${BLUE}[2/3] 移除VFIO驱动...${NC}"
@@ -64,7 +101,10 @@ enable_vfio() {
     echo -e "${GREEN}[✓] VFIO驱动已加载${NC}"
     
     echo -e "${BLUE}[3/3] 将GPU分离到VFIO...${NC}"
-    virsh nodedev-detach pci_0000_01_00.0 || return 1
+    # 转换PCI地址为libvirt格式
+    local libvirt_dev=$(convert_to_libvirt_format "$GPU_ADDRESS")
+    echo -e "${YELLOW}[!] 使用设备名称: $libvirt_dev${NC}"
+    virsh nodedev-detach "$libvirt_dev" || return 1
     echo -e "${GREEN}[✓] GPU已分离${NC}"
     
     echo -e "${GREEN}[✓] GPU已切换到VM直通模式${NC}"
